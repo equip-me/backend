@@ -1,0 +1,47 @@
+---
+description: Domain model, enums, API routes, and order state machine
+alwaysApply: true
+---
+
+# Domain Reference
+
+## Entities
+
+- **User** — registers, places orders. Roles: `owner`, `admin`, `user`, `suspended`
+- **Organization** — owns listings. Statuses: `created` → `verified` (by platform admin). Unverified orgs' listings hidden from public
+- **Membership** — many-to-many User↔Org. Roles: `admin`, `editor`, `viewer`. Statuses: `candidate`, `invited`, `member`
+- **ListingCategory** — seed (verified=true, global) or user-created (verified=false, org-scoped)
+- **Listing** — rentable item. Statuses: `hidden` → `published` → `in_rent` → `archived`. Editors set `published`/`hidden`/`archived`; `in_rent` is automatic
+- **Order** — rental request for a listing
+
+## Order State Machine
+
+```
+pending ──[offer]──► offered ──[confirm]──► confirmed ──[auto: start_date]──► active ──[auto: end_date]──► finished
+  └──[reject]──► rejected    └──[decline]──► declined    ├──[user cancel]──► canceled_by_user         ├──[user cancel]──► canceled_by_user
+                                                          └──[org cancel]──► canceled_by_organization  └──[org cancel]──► canceled_by_organization
+```
+
+Terminal: `finished`, `rejected`, `declined`, `canceled_by_user`, `canceled_by_organization`
+
+## Permission Levels
+
+| Level | Requirement |
+|-------|-------------|
+| Public | None |
+| Authenticated | Valid JWT, not suspended |
+| Org Editor | Authenticated + editor/admin membership |
+| Org Admin | Authenticated + admin membership |
+| Platform Admin | Authenticated + user role admin/owner |
+
+## API Route Prefixes
+
+- `/users/` — registration, profile, `GET /users/me`
+- `/organizations/{org_id}/` — org management, members, listings, orders (org-side)
+- `/listings/` — public catalog browse
+- `/orders/` — user-side order actions
+- `/private/` — platform admin endpoints (verify org, change user role)
+
+## External: Dadata — auto-fill org legal data by INN
+
+Full specs: `docs/business-logic.md`, `docs/technical-spec.md`

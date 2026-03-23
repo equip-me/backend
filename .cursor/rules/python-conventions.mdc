@@ -1,0 +1,34 @@
+---
+description: Python coding standards for this project
+globs: "**/*.py"
+alwaysApply: false
+---
+
+# Python Conventions
+
+## Hard Rules
+
+- **No `# type: ignore`** — fix the type error or restructure
+- **No `from __future__ import annotations`** — Pydantic v2 and Tortoise need runtime types. Use `typing.Self` for forward refs
+- **Strict mypy** — every function fully typed, no implicit `Any`
+- **All config in `pyproject.toml`** — ruff, mypy, pytest, coverage
+- **Ruff** — line length 119, `select = ["ALL"]` with specific ignores (see pyproject.toml)
+
+## Patterns
+
+- UUID primary keys on all models
+- Async everywhere (Tortoise ORM is async-native)
+- pydantic-settings for config, Pydantic v2 schemas for request/response
+- JWT HS256 auth with 7-day token lifetime
+- Argon2id for password hashing
+
+## Testing Layers
+
+| Layer | DB | External |
+|-------|-------|----------|
+| Unit | No | Mocked |
+| DB | Test DB | Mocked |
+| Integration | Test DB | Mocked |
+
+- httpx `AsyncClient` + `ASGITransport` for integration tests
+- Fixtures in `conftest.py`, autouse table truncation between tests

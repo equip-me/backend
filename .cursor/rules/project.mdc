@@ -1,0 +1,46 @@
+---
+description: Project stack, structure, and development commands
+alwaysApply: true
+---
+
+# Rental Platform Backend
+
+B2B/B2C marketplace for renting equipment. FastAPI + Tortoise ORM + PostgreSQL.
+
+## Stack
+
+- Python 3.13, FastAPI, Pydantic v2, Tortoise ORM (asyncpg), pydantic-settings (YAML)
+- Dependency management: Poetry (`pyproject.toml` + committed `poetry.lock`)
+- Linting/formatting: Ruff (replaces black, isort, flake8)
+- Type checking: mypy strict
+- Testing: pytest + httpx AsyncClient + anyio
+- Task runner: go-task (`Taskfile.yml`)
+
+## Project Layout
+
+```
+config/              # YAML config: base.yaml, dev.yaml, test.yaml, prod.yaml
+app/                 # Application code
+  main.py            # FastAPI app entrypoint (app.main:app)
+tests/               # Tests (unit, db, integration)
+docs/                # Specs: technical-spec.md, business-logic.md
+```
+
+## Key Commands
+
+| Command | Purpose |
+|---------|---------|
+| `task setup` | Install deps, hooks, start DB |
+| `task run` | Dev server (uvicorn --reload :8000) |
+| `task lint:fix` | Auto-fix lint + format |
+| `task typecheck` | mypy strict |
+| `task test` | Full test suite |
+| `task test:cov` | Tests with coverage |
+| `task db:makemigrations` | Generate migration |
+| `task db:migrate` | Apply migrations |
+| `task ci` | lint + typecheck + test |
+
+## Configuration
+
+`APP_ENV=dev|test|prod` selects config. Loader merges `base.yaml` + env-specific file.
+Secrets (DB password, JWT secret, Dadata key) come from env vars only.
