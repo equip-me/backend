@@ -1,37 +1,11 @@
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
 
-import yaml
 from pydantic import BaseModel
+from pydantic_settings import BaseSettings, PydanticBaseSettingsSource, SettingsConfigDict, YamlConfigSettingsSource
 
 CONFIG_DIR = Path(__file__).resolve().parent.parent.parent / "config"
-
-
-def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:
-    merged = base.copy()
-    for key, value in override.items():
-        if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
-            merged[key] = _deep_merge(merged[key], value)
-        else:
-            merged[key] = value
-    return merged
-
-
-def _load_yaml_config(env: str) -> dict[str, Any]:
-    base_path = CONFIG_DIR / "base.yaml"
-    env_path = CONFIG_DIR / f"{env}.yaml"
-
-    with base_path.open() as f:
-        base: dict[str, Any] = yaml.safe_load(f) or {}
-
-    if env_path.exists():
-        with env_path.open() as f:
-            env_config: dict[str, Any] = yaml.safe_load(f) or {}
-        return _deep_merge(base, env_config)
-
-    return base
 
 
 class DatabaseSettings(BaseModel):
@@ -55,33 +29,36 @@ class CORSSettings(BaseModel):
     allow_credentials: bool = True
 
 
-class Settings(BaseModel):
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(env_nested_delimiter="__")
+
     app_env: str = "dev"
     database: DatabaseSettings = DatabaseSettings()
     jwt: JWTSettings = JWTSettings()
     cors: CORSSettings = CORSSettings()
     dadata_api_key: str = ""
 
+    @classmethod
+    def settings_customise_sources(
+        cls,
+        settings_cls: type[BaseSettings],
+        init_settings: PydanticBaseSettingsSource,
+        env_settings: PydanticBaseSettingsSource,
+        dotenv_settings: PydanticBaseSettingsSource,  # noqa: ARG003
+        file_secret_settings: PydanticBaseSettingsSource,  # noqa: ARG003
+    ) -> tuple[PydanticBaseSettingsSource, ...]:
+        env = os.getenv("APP_ENV", "dev")
+        yaml_files: list[Path] = [CONFIG_DIR / "base.yaml"]
+        env_path = CONFIG_DIR / f"{env}.yaml"
+        if env_path.exists():
+            yaml_files.append(env_path)
+        return (
+            init_settings,
+            env_settings,
+            YamlConfigSettingsSource(settings_cls, yaml_file=yaml_files),
+        )
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:
-    env = os.getenv("APP_ENV", "dev")
-    yaml_data = _load_yaml_config(env)
-
-    db_data = yaml_data.get("database", {})
-    if db_password := os.getenv("DATABASE_PASSWORD"):
-        db_data["password"] = db_password
-
-    jwt_data = yaml_data.get("jwt", {})
-    if jwt_secret := os.getenv("JWT_SECRET"):
-        jwt_data["secret"] = jwt_secret
-
-    dadata_key = os.getenv("DADATA_API_KEY", db_data.get("dadata_api_key", ""))
-
-    return Settings(
-        app_env=env,
-        database=DatabaseSettings(**db_data),
-        jwt=JWTSettings(**jwt_data),
-        cors=CORSSettings(**yaml_data.get("cors", {})),
-        dadata_api_key=dadata_key,
-    )
+    return Settings()

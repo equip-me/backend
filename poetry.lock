@@ -1142,6 +1142,7 @@ files = [
 [package.dependencies]
 pydantic = ">=2.7.0"
 python-dotenv = ">=0.21.0"
+pyyaml = {version = ">=6.0.1", optional = true, markers = "extra == \"yaml\""}
 typing-inspection = ">=0.4.0"
 
 [package.extras]
@@ -1455,17 +1456,6 @@ asyncpg = ["asyncpg"]
 ipython = ["ipython", "nest-asyncio (>=1.6.0)"]
 psycopg = ["psycopg[binary,pool] (>=3.0.12,<4.0.0)"]
 ptpython = ["ptpython (>=3.0.0)"]
-
-[[package]]
-name = "types-pyyaml"
-version = "6.0.12.20250915"
-description = "Typing stubs for PyYAML"
-optional = false
-python-versions = ">=3.9"
-files = [
-    {file = "types_pyyaml-6.0.12.20250915-py3-none-any.whl", hash = "sha256:e7d4d9e064e89a3b3cae120b4990cd370874d2bf12fa5f46c97018dd5d3c9ab6"},
-    {file = "types_pyyaml-6.0.12.20250915.tar.gz", hash = "sha256:0f8b54a528c303f0e6f7165687dd33fafa81c807fcac23f632b63aa624ced1d3"},
-]
 
 [[package]]
 name = "typing-extensions"
@@ -1791,4 +1781,4 @@ files = [
 [metadata]
 lock-version = "2.0"
 python-versions = ">=3.14,<3.15"
-content-hash = "98ca576bd637ff0a7aebf622f617f2a449c20314424a9dd914231d4a98a2929d"
+content-hash = "44f34b7657791a11410e29f38aecb5f430ef9e05d506d07ffe349e4601013fd0"
