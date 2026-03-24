@@ -1,0 +1,4 @@
+cors:
+  allow_origins:
+    - "https://equip-me.ru"
+    - "https://www.equip-me.ru"

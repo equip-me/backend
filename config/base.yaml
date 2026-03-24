@@ -1,0 +1,15 @@
+database:
+  host: localhost
+  port: 5432
+  user: rental
+  name: rental_dev
+
+jwt:
+  algorithm: HS256
+  token_lifetime_days: 7
+
+cors:
+  allow_origins: []
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+  allow_credentials: true
