@@ -15,20 +15,14 @@ from app.users.router import router as users_router
 
 logger = logging.getLogger(__name__)
 
-SEED_CATEGORIES = [
-    "Спецтехника",
-    "Промышленное оборудование",
-    "Контрактное производство",
-    "Выставочное оборудование",
-]
-
 
 async def _seed_categories() -> None:
     if await ListingCategory.exists():
         return
-    for name in SEED_CATEGORIES:
+    settings = get_settings()
+    for name in settings.seed_categories:
         await ListingCategory.create(name=name, verified=True)
-    logger.info("Seeded %d listing categories", len(SEED_CATEGORIES))
+    logger.info("Seeded %d listing categories", len(settings.seed_categories))
 
 
 @asynccontextmanager

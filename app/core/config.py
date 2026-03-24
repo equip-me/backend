@@ -37,6 +37,7 @@ class Settings(BaseSettings):
     jwt: JWTSettings = JWTSettings()
     cors: CORSSettings = CORSSettings()
     dadata_api_key: str = ""
+    seed_categories: list[str] = []
 
     @classmethod
     def settings_customise_sources(

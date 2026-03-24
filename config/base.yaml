@@ -13,3 +13,9 @@ cors:
   allow_methods: ["*"]
   allow_headers: ["*"]
   allow_credentials: true
+
+seed_categories:
+  - "Спецтехника"
+  - "Промышленное оборудование"
+  - "Контрактное производство"
+  - "Выставочное оборудование"
