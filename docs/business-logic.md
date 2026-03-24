@@ -283,7 +283,7 @@ A "Listing" is a rentable item published by an organization.
 |--------|-------|-------------|
 | HIDDEN | `hidden` | Default. Not visible in public catalog |
 | PUBLISHED | `published` | Visible in public catalog, available for ordering |
-| IN_RENT | `in_rent` | Currently being rented (set automatically by order lifecycle) |
+| IN_RENT | `in_rent` | Currently being rented (set automatically by order lifecycle or manually by editor) |
 | ARCHIVED | `archived` | Removed from catalog by owner |
 
 ### 4.3 Listing Categories
@@ -570,15 +570,8 @@ Order (PK: id)
 |-------|-------------|
 | `hidden` | Not visible in public catalog (default for new listings) |
 | `published` | Visible in public catalog, available for ordering |
-| `in_rent` | Currently being rented (set automatically by order lifecycle) |
+| `in_rent` | Currently being rented (set automatically by order lifecycle or manually by editor) |
 | `archived` | Removed from catalog by owner |
-
-#### ListingStatusUpdate (editor-settable subset)
-| Value |
-|-------|
-| `published` |
-| `hidden` |
-| `archived` |
 
 #### OrderStatus
 | Value | Description |
