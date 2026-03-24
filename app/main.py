@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from tortoise import Tortoise
+from tortoise.contrib.fastapi import RegisterTortoise
 
 from app.core.config import get_settings
 from app.core.database import get_tortoise_config
@@ -32,12 +32,15 @@ async def _seed_categories() -> None:
 
 
 @asynccontextmanager
-async def lifespan(_app: FastAPI) -> AsyncGenerator[None]:
+async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
     config = get_tortoise_config()
-    await Tortoise.init(config=config)
-    await _seed_categories()
-    yield
-    await Tortoise.close_connections()
+    async with RegisterTortoise(
+        application,
+        config=config,
+        generate_schemas=True,
+    ):
+        await _seed_categories()
+        yield
 
 
 async def _handle_app_error(request: Request, exc: Exception) -> JSONResponse:
