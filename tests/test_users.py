@@ -64,6 +64,51 @@ async def test_register_weak_password(client: AsyncClient) -> None:
 
 
 @pytest.mark.anyio
+async def test_register_password_no_lowercase(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "nolower@example.com",
+            "password": "UPPERCASE1",
+            "phone": "+79991234567",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_register_password_no_uppercase(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "noupper@example.com",
+            "password": "lowercase1",
+            "phone": "+79991234567",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+async def test_register_password_no_digit(client: AsyncClient) -> None:
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "nodigit@example.com",
+            "password": "NoDigitsHere",
+            "phone": "+79991234567",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
+    assert resp.status_code == 422
+
+
+@pytest.mark.anyio
 async def test_register_invalid_phone(client: AsyncClient) -> None:
     resp = await client.post(
         "/users/",
@@ -199,6 +244,24 @@ async def test_get_me_expired_token(client: AsyncClient) -> None:
 
 
 @pytest.mark.anyio
+async def test_token_for_deleted_user(client: AsyncClient, create_user: Any) -> None:
+    user_data, token = await create_user(email="deleted@example.com")
+    await User.filter(id=user_data["id"]).delete()
+    resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Could not validate credentials"
+
+
+@pytest.mark.anyio
+async def test_token_without_sub_claim(client: AsyncClient) -> None:
+    settings = get_settings()
+    token = pyjwt.encode({"exp": 9999999999}, settings.jwt.secret, algorithm=settings.jwt.algorithm)
+    resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    assert resp.status_code == 401
+    assert resp.json()["detail"] == "Could not validate credentials"
+
+
+@pytest.mark.anyio
 async def test_get_user_not_found(client: AsyncClient) -> None:
     resp = await client.get(f"/users/{uuid.uuid4()}")
     assert resp.status_code == 404
@@ -214,6 +277,17 @@ async def test_update_name(client: AsyncClient, create_user: Any) -> None:
     )
     assert resp.status_code == 200
     assert resp.json()["name"] == "НовоеИмя"
+
+
+@pytest.mark.anyio
+async def test_update_invalid_phone(client: AsyncClient, create_user: Any) -> None:
+    _, token = await create_user(email="badphone_upd@example.com")
+    resp = await client.patch(
+        "/users/me",
+        json={"phone": "12345"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422
 
 
 @pytest.mark.anyio
