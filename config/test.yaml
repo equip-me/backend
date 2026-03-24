@@ -1,2 +1,6 @@
 database:
   name: rental_test
+  password: rental
+
+jwt:
+  secret: test-secret-not-for-production

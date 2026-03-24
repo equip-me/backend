@@ -69,15 +69,19 @@ def get_settings() -> Settings:
     yaml_data = _load_yaml_config(env)
 
     db_data = yaml_data.get("database", {})
-    db_data["password"] = os.getenv("DATABASE_PASSWORD", "")
+    if db_password := os.getenv("DATABASE_PASSWORD"):
+        db_data["password"] = db_password
 
     jwt_data = yaml_data.get("jwt", {})
-    jwt_data["secret"] = os.getenv("JWT_SECRET", "")
+    if jwt_secret := os.getenv("JWT_SECRET"):
+        jwt_data["secret"] = jwt_secret
+
+    dadata_key = os.getenv("DADATA_API_KEY", db_data.get("dadata_api_key", ""))
 
     return Settings(
         app_env=env,
         database=DatabaseSettings(**db_data),
         jwt=JWTSettings(**jwt_data),
         cors=CORSSettings(**yaml_data.get("cors", {})),
-        dadata_api_key=os.getenv("DADATA_API_KEY", ""),
+        dadata_api_key=dadata_key,
     )

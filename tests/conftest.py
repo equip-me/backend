@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("APP_ENV", "test")
+
 from collections.abc import AsyncGenerator
 from typing import TYPE_CHECKING, Any
 
@@ -18,7 +22,6 @@ if TYPE_CHECKING:
 @pytest.fixture(scope="session", autouse=True)
 async def initialize_db() -> AsyncGenerator[None]:
     config = get_tortoise_config()
-    config["connections"]["default"]["credentials"]["database"] = "rental_test"  # type: ignore[index]
     await Tortoise.init(config=config)
     await Tortoise.generate_schemas()
     yield

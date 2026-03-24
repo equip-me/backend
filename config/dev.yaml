@@ -1,5 +1,9 @@
 database:
   name: rental_dev
+  password: rental
+
+jwt:
+  secret: dev-secret-not-for-production
 
 cors:
   allow_origins:
