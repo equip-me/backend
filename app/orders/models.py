@@ -1,3 +1,5 @@
+from typing import Any
+
 from tortoise import fields
 from tortoise.models import Model
 
@@ -6,9 +8,9 @@ from app.core.enums import OrderStatus
 
 class Order(Model):
     id = fields.UUIDField(pk=True)
-    listing = fields.ForeignKeyField("models.Listing", related_name="orders")
-    organization = fields.ForeignKeyField("models.Organization", related_name="orders")
-    requester = fields.ForeignKeyField("models.User", related_name="orders")
+    listing: Any = fields.ForeignKeyField("models.Listing", related_name="orders")
+    organization: Any = fields.ForeignKeyField("models.Organization", related_name="orders")
+    requester: Any = fields.ForeignKeyField("models.User", related_name="orders")
     requested_start_date = fields.DateField()
     requested_end_date = fields.DateField()
     status = fields.CharEnumField(OrderStatus, default=OrderStatus.PENDING, max_length=30)

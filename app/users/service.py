@@ -2,6 +2,7 @@ from uuid import UUID
 
 from app.core.enums import UserRole
 from app.core.exceptions import (
+    AccountSuspendedError,
     AlreadyExistsError,
     InvalidCredentialsError,
     NotFoundError,
@@ -35,8 +36,6 @@ async def authenticate(email: str, password: str) -> TokenResponse:
     if not verify_password(password, user.hashed_password):
         raise InvalidCredentialsError("Incorrect username or password")
     if user.role == UserRole.SUSPENDED:
-        from app.core.exceptions import AccountSuspendedError
-
         raise AccountSuspendedError("Account suspended")
     token = create_access_token(user.id)
     return TokenResponse(access_token=token)

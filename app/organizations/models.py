@@ -1,3 +1,5 @@
+from typing import Any
+
 from tortoise import fields
 from tortoise.models import Model
 
@@ -29,8 +31,8 @@ class Organization(Model):
 
 class Membership(Model):
     id = fields.UUIDField(pk=True)
-    user = fields.ForeignKeyField("models.User", related_name="memberships")
-    organization = fields.ForeignKeyField("models.Organization", related_name="memberships")
+    user: Any = fields.ForeignKeyField("models.User", related_name="memberships")
+    organization: Any = fields.ForeignKeyField("models.Organization", related_name="memberships")
     role = fields.CharEnumField(MembershipRole, max_length=20)
     status = fields.CharEnumField(MembershipStatus, max_length=20)
     created_at = fields.DatetimeField(auto_now_add=True)

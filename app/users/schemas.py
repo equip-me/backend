@@ -1,9 +1,9 @@
 import re
 from datetime import datetime
+from typing import Self
 from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, EmailStr, field_validator, model_validator
-from typing_extensions import Self
 
 from app.core.enums import UserRole
 

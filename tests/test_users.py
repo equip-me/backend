@@ -1,21 +1,27 @@
+import uuid
 from typing import Any
 
+import jwt as pyjwt
 import pytest
 from httpx import AsyncClient
 
+from app.core.config import get_settings
 from app.core.enums import UserRole
 from app.users.models import User
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_register_returns_token(client: AsyncClient) -> None:
-    resp = await client.post("/users/", json={
-        "email": "new@example.com",
-        "password": "StrongPass1",
-        "phone": "+79991234567",
-        "name": "Иван",
-        "surname": "Иванов",
-    })
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "new@example.com",
+            "password": "StrongPass1",
+            "phone": "+79991234567",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
     assert resp.status_code == 200
     data = resp.json()
     assert "access_token" in data
@@ -26,122 +32,146 @@ async def test_register_returns_token(client: AsyncClient) -> None:
     assert me_resp.json()["email"] == "new@example.com"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_register_duplicate_email(client: AsyncClient, create_user: Any) -> None:
     await create_user(email="dup@example.com")
-    resp = await client.post("/users/", json={
-        "email": "dup@example.com",
-        "password": "StrongPass1",
-        "phone": "+79997654321",
-        "name": "Петр",
-        "surname": "Петров",
-    })
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "dup@example.com",
+            "password": "StrongPass1",
+            "phone": "+79997654321",
+            "name": "Петр",
+            "surname": "Петров",
+        },
+    )
     assert resp.status_code == 409
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_register_weak_password(client: AsyncClient) -> None:
-    resp = await client.post("/users/", json={
-        "email": "weak@example.com",
-        "password": "short",
-        "phone": "+79991234567",
-        "name": "Иван",
-        "surname": "Иванов",
-    })
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "weak@example.com",
+            "password": "short",
+            "phone": "+79991234567",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
     assert resp.status_code == 422
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_register_invalid_phone(client: AsyncClient) -> None:
-    resp = await client.post("/users/", json={
-        "email": "phone@example.com",
-        "password": "StrongPass1",
-        "phone": "12345",
-        "name": "Иван",
-        "surname": "Иванов",
-    })
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "phone@example.com",
+            "password": "StrongPass1",
+            "phone": "12345",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
     assert resp.status_code == 422
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_register_invalid_email(client: AsyncClient) -> None:
-    resp = await client.post("/users/", json={
-        "email": "not-an-email",
-        "password": "StrongPass1",
-        "phone": "+79991234567",
-        "name": "Иван",
-        "surname": "Иванов",
-    })
+    resp = await client.post(
+        "/users/",
+        json={
+            "email": "not-an-email",
+            "password": "StrongPass1",
+            "phone": "+79991234567",
+            "name": "Иван",
+            "surname": "Иванов",
+        },
+    )
     assert resp.status_code == 422
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_login_success(client: AsyncClient, create_user: Any) -> None:
     await create_user(email="login@example.com", password="StrongPass1")
-    resp = await client.post("/users/token", json={
-        "email": "login@example.com",
-        "password": "StrongPass1",
-    })
+    resp = await client.post(
+        "/users/token",
+        json={
+            "email": "login@example.com",
+            "password": "StrongPass1",
+        },
+    )
     assert resp.status_code == 200
     assert "access_token" in resp.json()
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_login_wrong_email(client: AsyncClient) -> None:
-    resp = await client.post("/users/token", json={
-        "email": "nobody@example.com",
-        "password": "StrongPass1",
-    })
+    resp = await client.post(
+        "/users/token",
+        json={
+            "email": "nobody@example.com",
+            "password": "StrongPass1",
+        },
+    )
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Incorrect username or password"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_login_wrong_password(client: AsyncClient, create_user: Any) -> None:
     await create_user(email="wrongpw@example.com", password="StrongPass1")
-    resp = await client.post("/users/token", json={
-        "email": "wrongpw@example.com",
-        "password": "WrongPass1",
-    })
+    resp = await client.post(
+        "/users/token",
+        json={
+            "email": "wrongpw@example.com",
+            "password": "WrongPass1",
+        },
+    )
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Incorrect username or password"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_login_suspended_user(client: AsyncClient, create_user: Any) -> None:
     user_data, _ = await create_user(email="suspended@example.com")
     await User.filter(id=user_data["id"]).update(role=UserRole.SUSPENDED)
-    resp = await client.post("/users/token", json={
-        "email": "suspended@example.com",
-        "password": "StrongPass1",
-    })
+    resp = await client.post(
+        "/users/token",
+        json={
+            "email": "suspended@example.com",
+            "password": "StrongPass1",
+        },
+    )
     assert resp.status_code == 403
     assert resp.json()["detail"] == "Account suspended"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_me_success(client: AsyncClient, create_user: Any) -> None:
-    user_data, token = await create_user(email="me@example.com")
+    _, token = await create_user(email="me@example.com")
     resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert resp.json()["email"] == "me@example.com"
     assert "hashed_password" not in resp.json()
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_me_no_token(client: AsyncClient) -> None:
     resp = await client.get("/users/me")
     assert resp.status_code == 401
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_me_invalid_token(client: AsyncClient) -> None:
     resp = await client.get("/users/me", headers={"Authorization": "Bearer invalidtoken"})
     assert resp.status_code == 401
     assert resp.json()["detail"] == "Could not validate credentials"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_me_suspended(client: AsyncClient, create_user: Any) -> None:
     user_data, token = await create_user(email="susp@example.com")
     await User.filter(id=user_data["id"]).update(role=UserRole.SUSPENDED)
@@ -150,7 +180,7 @@ async def test_get_me_suspended(client: AsyncClient, create_user: Any) -> None:
     assert resp.json()["detail"] == "Account suspended"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_user_by_id(client: AsyncClient, create_user: Any) -> None:
     user_data, _ = await create_user(email="byid@example.com")
     resp = await client.get(f"/users/{user_data['id']}")
@@ -158,12 +188,8 @@ async def test_get_user_by_id(client: AsyncClient, create_user: Any) -> None:
     assert resp.json()["email"] == "byid@example.com"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_me_expired_token(client: AsyncClient) -> None:
-    import jwt as pyjwt
-
-    from app.core.config import get_settings
-
     settings = get_settings()
     expired_payload = {"sub": "00000000-0000-0000-0000-000000000000", "exp": 0}
     expired_token = pyjwt.encode(expired_payload, settings.jwt.secret, algorithm=settings.jwt.algorithm)
@@ -172,15 +198,13 @@ async def test_get_me_expired_token(client: AsyncClient) -> None:
     assert resp.json()["detail"] == "Could not validate credentials"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_get_user_not_found(client: AsyncClient) -> None:
-    import uuid
-
     resp = await client.get(f"/users/{uuid.uuid4()}")
     assert resp.status_code == 404
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_update_name(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="upd@example.com")
     resp = await client.patch(
@@ -192,7 +216,7 @@ async def test_update_name(client: AsyncClient, create_user: Any) -> None:
     assert resp.json()["name"] == "НовоеИмя"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_update_phone(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="phone_upd@example.com")
     resp = await client.patch(
@@ -204,7 +228,7 @@ async def test_update_phone(client: AsyncClient, create_user: Any) -> None:
     assert resp.json()["phone"] == "+79998887766"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_update_email(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="oldemail@example.com")
     resp = await client.patch(
@@ -216,7 +240,7 @@ async def test_update_email(client: AsyncClient, create_user: Any) -> None:
     assert resp.json()["email"] == "newemail@example.com"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_update_email_duplicate(client: AsyncClient, create_user: Any) -> None:
     await create_user(email="taken@example.com")
     _, token = await create_user(email="other@example.com")
@@ -228,7 +252,7 @@ async def test_update_email_duplicate(client: AsyncClient, create_user: Any) -> 
     assert resp.status_code == 409
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_password_change_success(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="pwchange@example.com", password="OldPass1x")
     resp = await client.patch(
@@ -238,14 +262,17 @@ async def test_password_change_success(client: AsyncClient, create_user: Any) ->
     )
     assert resp.status_code == 200
 
-    login_resp = await client.post("/users/token", json={
-        "email": "pwchange@example.com",
-        "password": "NewPass2y",
-    })
+    login_resp = await client.post(
+        "/users/token",
+        json={
+            "email": "pwchange@example.com",
+            "password": "NewPass2y",
+        },
+    )
     assert login_resp.status_code == 200
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_password_change_missing_new_password(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="nopw@example.com")
     resp = await client.patch(
@@ -256,7 +283,7 @@ async def test_password_change_missing_new_password(client: AsyncClient, create_
     assert resp.status_code == 422
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_password_change_missing_current_password(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="nocur@example.com")
     resp = await client.patch(
@@ -267,7 +294,7 @@ async def test_password_change_missing_current_password(client: AsyncClient, cre
     assert resp.status_code == 422
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_password_change_wrong_current(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="wrongcur@example.com", password="CorrectPass1")
     resp = await client.patch(
@@ -278,7 +305,7 @@ async def test_password_change_wrong_current(client: AsyncClient, create_user: A
     assert resp.status_code == 401
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_password_change_weak_new_password(client: AsyncClient, create_user: Any) -> None:
     _, token = await create_user(email="weaknew@example.com", password="StrongPass1")
     resp = await client.patch(
@@ -289,9 +316,11 @@ async def test_password_change_weak_new_password(client: AsyncClient, create_use
     assert resp.status_code == 422
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_admin_assigns_suspended_role(
-    client: AsyncClient, create_user: Any, admin_user: tuple[dict[str, Any], str],
+    client: AsyncClient,
+    create_user: Any,
+    admin_user: tuple[dict[str, Any], str],
 ) -> None:
     target, _ = await create_user(email="target@example.com")
     _, admin_token = admin_user
@@ -304,9 +333,11 @@ async def test_admin_assigns_suspended_role(
     assert resp.json()["role"] == "suspended"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_admin_assigns_user_role(
-    client: AsyncClient, create_user: Any, admin_user: tuple[dict[str, Any], str],
+    client: AsyncClient,
+    create_user: Any,
+    admin_user: tuple[dict[str, Any], str],
 ) -> None:
     target, _ = await create_user(email="target2@example.com")
     _, admin_token = admin_user
@@ -320,9 +351,10 @@ async def test_admin_assigns_user_role(
     assert resp.json()["role"] == "user"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_non_admin_rejected(
-    client: AsyncClient, create_user: Any,
+    client: AsyncClient,
+    create_user: Any,
 ) -> None:
     target, _ = await create_user(email="t1@example.com")
     _, regular_token = await create_user(email="regular@example.com")
@@ -334,9 +366,11 @@ async def test_non_admin_rejected(
     assert resp.status_code == 403
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_admin_cannot_assign_admin_role(
-    client: AsyncClient, create_user: Any, admin_user: tuple[dict[str, Any], str],
+    client: AsyncClient,
+    create_user: Any,
+    admin_user: tuple[dict[str, Any], str],
 ) -> None:
     target, _ = await create_user(email="t2@example.com")
     _, admin_token = admin_user
@@ -348,9 +382,11 @@ async def test_admin_cannot_assign_admin_role(
     assert resp.status_code == 403
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_admin_cannot_assign_owner_role(
-    client: AsyncClient, create_user: Any, admin_user: tuple[dict[str, Any], str],
+    client: AsyncClient,
+    create_user: Any,
+    admin_user: tuple[dict[str, Any], str],
 ) -> None:
     target, _ = await create_user(email="t3@example.com")
     _, admin_token = admin_user
@@ -362,9 +398,11 @@ async def test_admin_cannot_assign_owner_role(
     assert resp.status_code == 403
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_owner_assigns_admin_role(
-    client: AsyncClient, create_user: Any, owner_user: tuple[dict[str, Any], str],
+    client: AsyncClient,
+    create_user: Any,
+    owner_user: tuple[dict[str, Any], str],
 ) -> None:
     target, _ = await create_user(email="t4@example.com")
     _, owner_token = owner_user
@@ -377,9 +415,11 @@ async def test_owner_assigns_admin_role(
     assert resp.json()["role"] == "admin"
 
 
-@pytest.mark.anyio()
+@pytest.mark.anyio
 async def test_owner_assigns_any_role(
-    client: AsyncClient, create_user: Any, owner_user: tuple[dict[str, Any], str],
+    client: AsyncClient,
+    create_user: Any,
+    owner_user: tuple[dict[str, Any], str],
 ) -> None:
     target, _ = await create_user(email="t5@example.com")
     _, owner_token = owner_user

@@ -1,16 +1,18 @@
 from collections.abc import AsyncGenerator
-from typing import Any
-from uuid import UUID
+from typing import TYPE_CHECKING, Any
 
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
-from tortoise import Tortoise
+from tortoise import Tortoise, connections
 
 from app.core.database import get_tortoise_config
 from app.core.enums import UserRole
 from app.main import app
 from app.users.models import User
+
+if TYPE_CHECKING:
+    from uuid import UUID
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -25,15 +27,13 @@ async def initialize_db() -> AsyncGenerator[None]:
 
 @pytest.fixture(autouse=True)
 async def truncate_tables() -> None:
-    from tortoise import connections
-
     conn = connections.get("default")
     tables = ["orders", "listings", "listing_categories", "memberships", "organizations", "users"]
     for table in tables:
         await conn.execute_query(f"TRUNCATE TABLE {table} CASCADE;")
 
 
-@pytest.fixture()
+@pytest.fixture
 async def client() -> AsyncGenerator[AsyncClient]:
     transport = ASGITransport(app=app)
     async with httpx.AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -52,7 +52,7 @@ def _default_user_data(**overrides: Any) -> dict[str, Any]:
     return data
 
 
-@pytest.fixture()
+@pytest.fixture
 async def create_user(client: AsyncClient) -> Any:
     async def _create(**overrides: Any) -> tuple[dict[str, Any], str]:
         data = _default_user_data(**overrides)
@@ -65,7 +65,7 @@ async def create_user(client: AsyncClient) -> Any:
     return _create
 
 
-@pytest.fixture()
+@pytest.fixture
 async def admin_user(create_user: Any) -> tuple[dict[str, Any], str]:
     user_data, token = await create_user(email="admin@example.com")
     user_id: UUID = user_data["id"]
@@ -73,7 +73,7 @@ async def admin_user(create_user: Any) -> tuple[dict[str, Any], str]:
     return user_data, token
 
 
-@pytest.fixture()
+@pytest.fixture
 async def owner_user(create_user: Any) -> tuple[dict[str, Any], str]:
     user_data, token = await create_user(email="owner@example.com")
     user_id: UUID = user_data["id"]

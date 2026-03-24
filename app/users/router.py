@@ -18,12 +18,12 @@ from app.users.schemas import (
 router = APIRouter()
 
 
-@router.post("/users/", response_model=TokenResponse)
+@router.post("/users/")
 async def register(data: UserCreate) -> TokenResponse:
     return await service.register(data)
 
 
-@router.post("/users/token", response_model=TokenResponse)
+@router.post("/users/token")
 async def login(data: LoginRequest) -> TokenResponse:
     return await service.authenticate(data.email, data.password)
 

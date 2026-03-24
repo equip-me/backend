@@ -1,38 +1,38 @@
-from enum import Enum
+from enum import StrEnum
 
 
-class UserRole(str, Enum):
+class UserRole(StrEnum):
     OWNER = "owner"
     ADMIN = "admin"
     USER = "user"
     SUSPENDED = "suspended"
 
 
-class OrganizationStatus(str, Enum):
+class OrganizationStatus(StrEnum):
     CREATED = "created"
     VERIFIED = "verified"
 
 
-class MembershipRole(str, Enum):
+class MembershipRole(StrEnum):
     ADMIN = "admin"
     EDITOR = "editor"
     VIEWER = "viewer"
 
 
-class MembershipStatus(str, Enum):
+class MembershipStatus(StrEnum):
     CANDIDATE = "candidate"
     INVITED = "invited"
     MEMBER = "member"
 
 
-class ListingStatus(str, Enum):
+class ListingStatus(StrEnum):
     HIDDEN = "hidden"
     PUBLISHED = "published"
     IN_RENT = "in_rent"
     ARCHIVED = "archived"
 
 
-class OrderStatus(str, Enum):
+class OrderStatus(StrEnum):
     PENDING = "pending"
     OFFERED = "offered"
     REJECTED = "rejected"
