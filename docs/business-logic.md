@@ -80,6 +80,7 @@ Registration is the same for all users regardless of their future role. After re
 ### 2.3 User Update Rules
 
 - All fields are optional on update (partial update).
+- **Email change** must pass format validation and uniqueness check (409 Conflict on duplicate).
 - **Password change** requires both `password` (current) and `new_password`. The current password is verified via authentication. The new password must pass the same strength rules as registration.
 - Providing `password` without `new_password` is an error.
 
@@ -88,7 +89,7 @@ Registration is the same for all users regardless of their future role. After re
 **Mechanism:** JWT Bearer tokens.
 
 - **Algorithm:** HS256
-- **Token payload:** `sub` = user email, `exp` = expiration timestamp
+- **Token payload:** `sub` = user ID (UUID string), `exp` = expiration timestamp
 - **Token lifetime:** 7 days from issuance
 - **Login:** email + password. Returns `access_token` and `token_type: "bearer"`.
 
