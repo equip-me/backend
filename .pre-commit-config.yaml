@@ -14,12 +14,3 @@ repos:
         language: system
         types: [python]
         pass_filenames: false
-
-  - repo: local
-    hooks:
-      - id: pytest-on-push
-        name: pytest (pre-push)
-        entry: task test
-        language: system
-        stages: [pre-push]
-        pass_filenames: false

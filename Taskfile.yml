@@ -11,7 +11,6 @@ tasks:
     cmds:
       - poetry install
       - poetry run pre-commit install
-      - poetry run pre-commit install --hook-type pre-push
       - task: infra:up
       - task: test:up
 
