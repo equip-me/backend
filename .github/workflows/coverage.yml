@@ -1,11 +1,11 @@
-name: tests
+name: coverage
 
 on:
   push:
     branches: [main]
 
 jobs:
-  test:
+  coverage:
     runs-on: ubuntu-latest
     services:
       postgres:

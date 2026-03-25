@@ -25,7 +25,6 @@ pytest-cov = ">=7.1.0"
 pytest-asyncio = "*"
 ruff = ">=0.15.7"
 mypy = "*"
-pre-commit = "*"
 httpx = ">=0.28.1"
 pytest-env = "^1.6.0"
 

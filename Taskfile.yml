@@ -7,10 +7,9 @@ vars:
 tasks:
   # ── Setup ──────────────────────────────────────────────
   setup:
-    desc: Install deps, set up hooks, start infra
+    desc: Install deps, start infra
     cmds:
       - poetry install
-      - poetry run pre-commit install
       - task: infra:up
       - task: test:up
 

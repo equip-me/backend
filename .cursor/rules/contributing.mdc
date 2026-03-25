@@ -1,0 +1,54 @@
+---
+description: Contribution workflow — branches, PRs, CI
+alwaysApply: true
+---
+
+# Contributing
+
+## Branch Protection
+
+`main` is protected. All changes go through pull requests with squash merge.
+The PR title becomes the commit message on `main`, so it must be clear and well-structured.
+
+## Workflow
+
+1. Create a feature branch: `type/short-description` (e.g. `feat/jwt-refresh-tokens`, `fix/order-status-race`)
+2. Run `task lint:fix` and `task typecheck` locally before pushing
+3. Open a PR via `gh pr create` with a Conventional Commits title and a detailed body
+
+## PR Title (Conventional Commits)
+
+Format: `type(scope): description` or `type: description` — max 72 characters.
+
+Allowed types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
+
+Good examples:
+- `feat(auth): add JWT refresh token rotation`
+- `fix: prevent duplicate order creation on retry`
+- `refactor(listings): extract price calculation service`
+
+Bad examples:
+- `Update code` (no type, vague)
+- `feat: Implement the new user registration flow with email verification and admin approval` (too long)
+
+## PR Description
+
+Use this template:
+
+```
+## Summary
+<1-3 bullet points: what changed and why>
+
+## Test plan
+<How to verify: new/updated tests, manual steps, or N/A>
+```
+
+## CI
+
+GitHub Actions runs on every PR to `main`:
+- **lint** — `ruff check` + `ruff format --check`
+- **typecheck** — `mypy`
+- **test** — `pytest` (with Postgres service)
+- **pr-title** — Conventional Commits format validation
+
+All four checks must pass before merge. Coverage report runs separately on `main` after merge.
