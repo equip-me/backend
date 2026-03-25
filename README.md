@@ -1,9 +1,7 @@
 # Rental Platform Backend
 
-[![tests](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/test.yml/badge.svg)](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/test.yml)
+[![tests](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/coverage.yml/badge.svg)](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/coverage.yml)
 [![coverage](https://coveralls.io/repos/github/khamitovdr/equipment-sharing-backend-v2/badge.svg?branch=main)](https://coveralls.io/github/khamitovdr/equipment-sharing-backend-v2?branch=main)
-[![mypy](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/typecheck.yml/badge.svg)](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/typecheck.yml)
-[![lint](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/lint.yml/badge.svg)](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/lint.yml)
 
 B2B/B2C marketplace for renting equipment and assets. Organizations list rentable items, users browse the catalog and place rental orders, and the platform manages the full order lifecycle from request through active rental to completion.
 
@@ -69,7 +67,7 @@ docs/                   # Business logic and technical specifications
 git clone <repo-url>
 cd equipment-sharing-backend-v2
 cp .env.example .env   # fill in secrets (DB password, JWT secret, Dadata key)
-task setup              # installs deps, git hooks, starts dev DB
+task setup              # installs deps, starts dev + test DBs
 ```
 
 ### Run
@@ -86,7 +84,7 @@ All commands use [go-task](https://taskfile.dev/). Run `task --list` to see all 
 
 | Command | Purpose |
 |---------|---------|
-| `task setup` | Install deps, git hooks, start dev DB |
+| `task setup` | Install deps, start dev + test DBs |
 | `task run` | Dev server with hot reload |
 | **Lint & Types** | |
 | `task lint` | Check lint (no changes) |
@@ -205,15 +203,29 @@ Technical specification: [`docs/technical-spec.md`](docs/technical-spec.md)
 
 ## Contributing
 
-### Code Quality Gates
+All changes go through pull requests — `main` is protected and requires squash merge.
 
-Git hooks are installed automatically via `task setup`:
+### Workflow
 
-- **Pre-commit:** `task lint:fix` (auto-fix + format) → `task typecheck` (mypy strict)
+1. Create a branch: `type/short-description` (e.g. `feat/jwt-refresh-tokens`)
+2. Run `task lint:fix` and `task typecheck` before pushing
+3. Open a PR with a [Conventional Commits](https://www.conventionalcommits.org/) title (max 72 chars)
 
-CI runs lint, typecheck, and tests with coverage on every push to `main` via GitHub Actions.
+PR title format: `type(scope): description` or `type: description`
 
-Run everything locally before opening a PR:
+Allowed types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
+
+### CI
+
+GitHub Actions runs on every PR to `main`:
+- **lint** — ruff check + format
+- **typecheck** — mypy strict
+- **test** — pytest with Postgres
+- **pr-title** — Conventional Commits validation
+
+All checks must pass before merge. Coverage is reported separately on `main` after merge.
+
+Run everything locally before pushing:
 
 ```bash
 task ci   # lint + typecheck + test
