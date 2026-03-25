@@ -1,0 +1,16 @@
+---
+description: Instructions for orchestrating subagents and workflows
+alwaysApply: true
+---
+
+# Orchestration
+
+## Python Subagents
+When dispatching subagents for Python implementation, read `.cursor/rules/python-conventions.mdc` and include its full content in the subagent prompt.
+
+## Business Logic Changes
+When brainstorming introduces new entities, changes workflows, or modifies permissions:
+1. After design is approved by user, before writing the implementation plan
+2. Update `docs/business-logic.md` to reflect the target state
+3. Dispatch a reviewer subagent to verify the doc changes
+4. Ask user to review before proceeding to implementation plan
