@@ -84,6 +84,10 @@ Bad examples:
 <How to verify: new/updated tests, manual steps, or N/A>
 ```
 
+### Commit Messages
+
+- Do not mention Claude Code or AI tools in commit messages or `Co-Authored-By` trailers.
+
 ### CI
 
 GitHub Actions runs on every PR to `main`:
