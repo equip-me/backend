@@ -85,6 +85,7 @@ All three verify the org exists (404 if not) and raise 403 on insufficient permi
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
 | PUT | `/organizations/{org_id}/contacts` | Org Admin | Replace all contacts (transactional) |
+| GET | `/organizations/{org_id}/payment-details` | Org Member | Get payment details (404 if not set) |
 | POST | `/organizations/{org_id}/payment-details` | Org Admin | Create or replace payment details |
 
 ### Membership
