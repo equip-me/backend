@@ -106,10 +106,12 @@ follow_untyped_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
 addopts = ["-p", "no:anyio"]
 env = ["APP_ENV=test"]
 filterwarnings = [
-    "ignore::tortoise.warnings.TortoiseLoopSwitchWarning",
+    "error::tortoise.warnings.TortoiseLoopSwitchWarning",
 ]
 
 [tool.coverage.run]
