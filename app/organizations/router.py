@@ -4,9 +4,8 @@ from dadata import Dadata
 from fastapi import APIRouter, Depends, Response
 
 from app.core.dependencies import require_active_user, require_platform_admin
-from app.core.exceptions import NotFoundError
 from app.organizations import service
-from app.organizations.dependencies import get_dadata_client, require_org_admin, require_org_member
+from app.organizations.dependencies import get_dadata_client, get_org_or_404, require_org_admin, require_org_member
 from app.organizations.models import Membership, Organization
 from app.organizations.schemas import (
     ContactRead,
@@ -83,13 +82,10 @@ async def invite_member(
 
 @router.post("/organizations/{org_id}/members/join", response_model=MembershipRead)
 async def join_organization(
-    org_id: str,
     user: Annotated[User, Depends(require_active_user)],
+    org: Annotated[Organization, Depends(get_org_or_404)],
 ) -> MembershipRead:
-    org = await Organization.get_or_none(id=org_id)
-    if org is None:
-        raise NotFoundError("Organization not found")
-    return await service.join_organization(org_id, user)
+    return await service.join_organization(org.id, user)
 
 
 @router.patch("/organizations/{org_id}/members/{member_id}/approve", response_model=MembershipRead)
@@ -104,14 +100,11 @@ async def approve_candidate(
 
 @router.patch("/organizations/{org_id}/members/{member_id}/accept", response_model=MembershipRead)
 async def accept_invitation(
-    org_id: str,
     member_id: str,
     user: Annotated[User, Depends(require_active_user)],
+    org: Annotated[Organization, Depends(get_org_or_404)],
 ) -> MembershipRead:
-    org = await Organization.get_or_none(id=org_id)
-    if org is None:
-        raise NotFoundError("Organization not found")
-    return await service.accept_invitation(org_id, member_id, user)
+    return await service.accept_invitation(org.id, member_id, user)
 
 
 @router.patch("/organizations/{org_id}/members/{member_id}/role", response_model=MembershipRead)
@@ -126,14 +119,11 @@ async def change_member_role(
 
 @router.delete("/organizations/{org_id}/members/{member_id}", status_code=204)
 async def remove_member(
-    org_id: str,
     member_id: str,
     user: Annotated[User, Depends(require_active_user)],
+    org: Annotated[Organization, Depends(get_org_or_404)],
 ) -> Response:
-    org = await Organization.get_or_none(id=org_id)
-    if org is None:
-        raise NotFoundError("Organization not found")
-    await service.remove_member(org_id, member_id, user)
+    await service.remove_member(org.id, member_id, user)
     return Response(status_code=204)
 
 

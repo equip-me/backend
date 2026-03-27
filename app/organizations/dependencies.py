@@ -16,7 +16,7 @@ def get_dadata_client() -> Dadata:
     return Dadata(settings.dadata_api_key)
 
 
-async def _get_org_or_404(org_id: str = Path()) -> Organization:
+async def get_org_or_404(org_id: str = Path()) -> Organization:
     org = await Organization.get_or_none(id=org_id)
     if org is None:
         raise NotFoundError("Organization not found")
@@ -24,7 +24,7 @@ async def _get_org_or_404(org_id: str = Path()) -> Organization:
 
 
 async def require_org_member(
-    org: Annotated[Organization, Depends(_get_org_or_404)],
+    org: Annotated[Organization, Depends(get_org_or_404)],
     user: Annotated[User, Depends(require_active_user)],
 ) -> Membership:
     membership = await Membership.get_or_none(
@@ -38,7 +38,7 @@ async def require_org_member(
 
 
 async def require_org_editor(
-    org: Annotated[Organization, Depends(_get_org_or_404)],
+    org: Annotated[Organization, Depends(get_org_or_404)],
     user: Annotated[User, Depends(require_active_user)],
 ) -> Membership:
     membership = await Membership.get_or_none(
@@ -53,7 +53,7 @@ async def require_org_editor(
 
 
 async def require_org_admin(
-    org: Annotated[Organization, Depends(_get_org_or_404)],
+    org: Annotated[Organization, Depends(get_org_or_404)],
     user: Annotated[User, Depends(require_active_user)],
 ) -> Membership:
     membership = await Membership.get_or_none(
