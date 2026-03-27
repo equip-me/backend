@@ -8,9 +8,11 @@ from httpx import ASGITransport, AsyncClient
 from tortoise import Tortoise, connections
 
 from app.core.database import get_tortoise_config
-from app.core.enums import UserRole
+from app.core.enums import OrganizationStatus, UserRole
+from app.listings.models import ListingCategory
 from app.main import app
 from app.organizations.dependencies import get_dadata_client
+from app.organizations.models import Organization
 from app.users.models import User
 
 _TEST_TABLES = (
@@ -155,3 +157,39 @@ async def create_organization(client: AsyncClient, create_user: Any) -> Any:
         return resp.json(), token
 
     return _create
+
+
+@pytest.fixture
+async def create_category() -> Any:
+    async def _create(
+        name: str = "Test Category",
+        organization: Any = None,
+        user: Any = None,
+        *,
+        verified: bool = False,
+    ) -> ListingCategory:
+        return await ListingCategory.create(
+            name=name,
+            organization=organization,
+            added_by=user,
+            verified=verified,
+        )
+
+    return _create
+
+
+@pytest.fixture
+async def seed_categories() -> list[ListingCategory]:
+    categories = []
+    for name in ["Спецтехника", "Промышленное оборудование"]:
+        cat = await ListingCategory.create(name=name, verified=True)
+        categories.append(cat)
+    return categories
+
+
+@pytest.fixture
+async def verified_org(create_organization: Any) -> tuple[dict[str, Any], str]:
+    org_data, creator_token = await create_organization()
+    org_id = org_data["id"]
+    await Organization.filter(id=org_id).update(status=OrganizationStatus.VERIFIED)
+    return org_data, creator_token
