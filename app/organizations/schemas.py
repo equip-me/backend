@@ -1,5 +1,5 @@
 import re
-from datetime import datetime
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Self
 from uuid import UUID
@@ -61,7 +61,7 @@ class OrganizationRead(BaseModel):
     inn: str
     short_name: str | None
     full_name: str | None
-    registration_date: str | None
+    registration_date: date | None
     authorized_capital_k_rubles: Decimal | None
     legal_address: str | None
     manager_name: str | None
