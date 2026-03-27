@@ -276,6 +276,86 @@ class TestPaymentDetails:
         assert resp.status_code == 403
 
 
+class TestMembershipInvite:
+    async def test_invite_user(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, admin_token = await create_organization()
+        user_data, _ = await create_user(email="invitee@example.com")
+        resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["user_id"] == user_data["id"]
+        assert body["role"] == "editor"
+        assert body["status"] == "invited"
+
+    async def test_invite_nonexistent_user(self, client: AsyncClient, create_organization: Any) -> None:
+        org_data, admin_token = await create_organization()
+        resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": "ZZZZZZ", "role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 404
+
+    async def test_invite_duplicate(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, admin_token = await create_organization()
+        user_data, _ = await create_user(email="invitee@example.com")
+        await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "viewer"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 409
+
+    async def test_invite_not_admin(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, _ = await create_organization()
+        _, other_token = await create_user(email="nonadmin@example.com")
+        user_data, _ = await create_user(email="invitee@example.com")
+        resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "editor"},
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 403
+
+
+class TestMembershipJoin:
+    async def test_join_request(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, _ = await create_organization()
+        _, user_token = await create_user(email="joiner@example.com")
+        resp = await client.post(
+            f"/organizations/{org_data['id']}/members/join",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["role"] == "viewer"
+        assert body["status"] == "candidate"
+
+    async def test_join_duplicate(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, _ = await create_organization()
+        _, user_token = await create_user(email="joiner@example.com")
+        join_url = f"/organizations/{org_data['id']}/members/join"
+        auth = {"Authorization": f"Bearer {user_token}"}
+        await client.post(join_url, headers=auth)
+        resp = await client.post(join_url, headers=auth)
+        assert resp.status_code == 409
+
+    async def test_join_already_member(self, client: AsyncClient, create_organization: Any) -> None:
+        org_data, admin_token = await create_organization()
+        join_url = f"/organizations/{org_data['id']}/members/join"
+        resp = await client.post(join_url, headers={"Authorization": f"Bearer {admin_token}"})
+        assert resp.status_code == 409
+
+
 class TestVerifyOrganization:
     async def test_verify_org(
         self,

@@ -4,12 +4,15 @@ from dadata import Dadata
 from fastapi import APIRouter, Depends
 
 from app.core.dependencies import require_active_user, require_platform_admin
+from app.core.exceptions import NotFoundError
 from app.organizations import service
 from app.organizations.dependencies import get_dadata_client, require_org_admin, require_org_member
-from app.organizations.models import Membership
+from app.organizations.models import Membership, Organization
 from app.organizations.schemas import (
     ContactRead,
     ContactsReplace,
+    MembershipInvite,
+    MembershipRead,
     OrganizationCreate,
     OrganizationRead,
     PaymentDetailsCreate,
@@ -65,6 +68,26 @@ async def create_payment_details(
     _membership: Annotated[Membership, Depends(require_org_admin)],
 ) -> PaymentDetailsRead:
     return await service.upsert_payment_details(org_id, data)
+
+
+@router.post("/organizations/{org_id}/members/invite", response_model=MembershipRead)
+async def invite_member(
+    org_id: str,
+    data: MembershipInvite,
+    _membership: Annotated[Membership, Depends(require_org_admin)],
+) -> MembershipRead:
+    return await service.invite_member(org_id, data)
+
+
+@router.post("/organizations/{org_id}/members/join", response_model=MembershipRead)
+async def join_organization(
+    org_id: str,
+    user: Annotated[User, Depends(require_active_user)],
+) -> MembershipRead:
+    org = await Organization.get_or_none(id=org_id)
+    if org is None:
+        raise NotFoundError("Organization not found")
+    return await service.join_organization(org_id, user)
 
 
 @router.patch("/private/organizations/{org_id}/verify", response_model=OrganizationRead)

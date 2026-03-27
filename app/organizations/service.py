@@ -13,6 +13,8 @@ from app.organizations.models import Membership, Organization, OrganizationConta
 from app.organizations.schemas import (
     ContactRead,
     ContactsReplace,
+    MembershipInvite,
+    MembershipRead,
     OrganizationCreate,
     OrganizationRead,
     PaymentDetailsCreate,
@@ -142,6 +144,37 @@ async def upsert_payment_details(org_id: str, data: PaymentDetailsCreate) -> Pay
             setattr(pd, field, value)
         await pd.save()
     return PaymentDetailsRead.model_validate(pd)
+
+
+async def invite_member(org_id: str, data: MembershipInvite) -> MembershipRead:
+    target_user = await User.get_or_none(id=data.user_id)
+    if target_user is None:
+        raise NotFoundError("User not found")
+    existing = await Membership.get_or_none(user=target_user, organization_id=org_id)
+    if existing is not None:
+        raise AlreadyExistsError("User already has a membership in this organization")
+    membership = await Membership.create(
+        id=uuid4(),
+        user=target_user,
+        organization_id=org_id,
+        role=data.role,
+        status=MembershipStatus.INVITED,
+    )
+    return MembershipRead.model_validate(membership)
+
+
+async def join_organization(org_id: str, user: User) -> MembershipRead:
+    existing = await Membership.get_or_none(user=user, organization_id=org_id)
+    if existing is not None:
+        raise AlreadyExistsError("You already have a membership in this organization")
+    membership = await Membership.create(
+        id=uuid4(),
+        user=user,
+        organization_id=org_id,
+        role=MembershipRole.VIEWER,
+        status=MembershipStatus.CANDIDATE,
+    )
+    return MembershipRead.model_validate(membership)
 
 
 async def verify_organization(org_id: str) -> OrganizationRead:
