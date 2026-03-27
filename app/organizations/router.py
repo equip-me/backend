@@ -11,6 +11,7 @@ from app.organizations.models import Membership, Organization
 from app.organizations.schemas import (
     ContactRead,
     ContactsReplace,
+    MembershipApprove,
     MembershipInvite,
     MembershipRead,
     OrganizationCreate,
@@ -88,6 +89,28 @@ async def join_organization(
     if org is None:
         raise NotFoundError("Organization not found")
     return await service.join_organization(org_id, user)
+
+
+@router.patch("/organizations/{org_id}/members/{member_id}/approve", response_model=MembershipRead)
+async def approve_candidate(
+    org_id: str,
+    member_id: str,
+    data: MembershipApprove,
+    _membership: Annotated[Membership, Depends(require_org_admin)],
+) -> MembershipRead:
+    return await service.approve_candidate(org_id, member_id, data)
+
+
+@router.patch("/organizations/{org_id}/members/{member_id}/accept", response_model=MembershipRead)
+async def accept_invitation(
+    org_id: str,
+    member_id: str,
+    user: Annotated[User, Depends(require_active_user)],
+) -> MembershipRead:
+    org = await Organization.get_or_none(id=org_id)
+    if org is None:
+        raise NotFoundError("Organization not found")
+    return await service.accept_invitation(org_id, member_id, user)
 
 
 @router.patch("/private/organizations/{org_id}/verify", response_model=OrganizationRead)

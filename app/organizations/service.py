@@ -7,12 +7,19 @@ from dadata import Dadata
 from tortoise.transactions import in_transaction
 
 from app.core.enums import MembershipRole, MembershipStatus, OrganizationStatus
-from app.core.exceptions import AlreadyExistsError, ExternalServiceError, NotFoundError
+from app.core.exceptions import (
+    AlreadyExistsError,
+    AppValidationError,
+    ExternalServiceError,
+    NotFoundError,
+    PermissionDeniedError,
+)
 from app.core.identifiers import create_with_short_id
 from app.organizations.models import Membership, Organization, OrganizationContact, PaymentDetails
 from app.organizations.schemas import (
     ContactRead,
     ContactsReplace,
+    MembershipApprove,
     MembershipInvite,
     MembershipRead,
     OrganizationCreate,
@@ -174,6 +181,33 @@ async def join_organization(org_id: str, user: User) -> MembershipRead:
         role=MembershipRole.VIEWER,
         status=MembershipStatus.CANDIDATE,
     )
+    return MembershipRead.model_validate(membership)
+
+
+async def approve_candidate(org_id: str, member_id: str, data: MembershipApprove) -> MembershipRead:
+    membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
+    if membership is None:
+        raise NotFoundError("Membership not found")
+    if membership.status != MembershipStatus.CANDIDATE:
+        raise AppValidationError("Only candidates can be approved")
+    membership.role = data.role
+    membership.status = MembershipStatus.MEMBER
+    await membership.save()
+    return MembershipRead.model_validate(membership)
+
+
+async def accept_invitation(org_id: str, member_id: str, user: User) -> MembershipRead:
+    membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
+    if membership is None:
+        raise NotFoundError("Membership not found")
+    await membership.fetch_related("user")
+    membership_user: User = membership.user
+    if membership_user.id != user.id:
+        raise PermissionDeniedError("You can only accept your own invitation")
+    if membership.status != MembershipStatus.INVITED:
+        raise AppValidationError("Only invitations can be accepted")
+    membership.status = MembershipStatus.MEMBER
+    await membership.save()
     return MembershipRead.model_validate(membership)
 
 

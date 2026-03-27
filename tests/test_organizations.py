@@ -356,6 +356,108 @@ class TestMembershipJoin:
         assert resp.status_code == 409
 
 
+class TestMembershipApprove:
+    async def test_approve_candidate(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, admin_token = await create_organization()
+        _, user_token = await create_user(email="joiner@example.com")
+        join_resp = await client.post(
+            f"/organizations/{org_data['id']}/members/join",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        member_id = join_resp.json()["id"]
+        resp = await client.patch(
+            f"/organizations/{org_data['id']}/members/{member_id}/approve",
+            json={"role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["role"] == "editor"
+        assert resp.json()["status"] == "member"
+
+    async def test_approve_wrong_status(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, admin_token = await create_organization()
+        user_data, _ = await create_user(email="invitee@example.com")
+        invite_resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        member_id = invite_resp.json()["id"]
+        # Try to approve an INVITED membership (should fail — approve is for CANDIDATE only)
+        resp = await client.patch(
+            f"/organizations/{org_data['id']}/members/{member_id}/approve",
+            json={"role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 400
+
+    async def test_approve_not_admin(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, _ = await create_organization()
+        _, user_token = await create_user(email="joiner@example.com")
+        join_resp = await client.post(
+            f"/organizations/{org_data['id']}/members/join",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        member_id = join_resp.json()["id"]
+        # Non-admin tries to approve
+        resp = await client.patch(
+            f"/organizations/{org_data['id']}/members/{member_id}/approve",
+            json={"role": "editor"},
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert resp.status_code == 403
+
+
+class TestMembershipAccept:
+    async def test_accept_invitation(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, admin_token = await create_organization()
+        user_data, user_token = await create_user(email="invitee@example.com")
+        invite_resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        member_id = invite_resp.json()["id"]
+        resp = await client.patch(
+            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "member"
+        assert resp.json()["role"] == "editor"
+
+    async def test_accept_wrong_user(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, admin_token = await create_organization()
+        user_data, _ = await create_user(email="invitee@example.com")
+        _, other_token = await create_user(email="other@example.com")
+        invite_resp = await client.post(
+            f"/organizations/{org_data['id']}/members/invite",
+            json={"user_id": user_data["id"], "role": "editor"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        member_id = invite_resp.json()["id"]
+        resp = await client.patch(
+            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 403
+
+    async def test_accept_wrong_status(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
+        org_data, _ = await create_organization()
+        _, user_token = await create_user(email="joiner@example.com")
+        join_resp = await client.post(
+            f"/organizations/{org_data['id']}/members/join",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        member_id = join_resp.json()["id"]
+        # Try to accept a CANDIDATE membership (should fail — accept is for INVITED only)
+        resp = await client.patch(
+            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert resp.status_code == 400
+
+
 class TestVerifyOrganization:
     async def test_verify_org(
         self,
