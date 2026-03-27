@@ -5,6 +5,7 @@ from httpx import AsyncClient
 from app.core.enums import ListingStatus
 from app.listings.models import Listing, ListingCategory
 from app.organizations.models import Organization
+from app.users.models import User
 
 
 class TestCreateCategory:
@@ -72,8 +73,6 @@ class TestListPublicCategories:
         org_data, token = verified_org
         org_id = org_data["id"]
         org = await Organization.get(id=org_id)
-        from app.users.models import User
-
         user = await User.get(
             id=(await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})).json()["id"]
         )
@@ -117,8 +116,6 @@ class TestListOrgCategories:
         )
         # Create a listing in the org category so it shows up
         org = await Organization.get(id=org_id)
-        from app.users.models import User
-
         user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
         user = await User.get(id=user_resp.json()["id"])
         org_cat = await ListingCategory.filter(name="Org Only").first()
