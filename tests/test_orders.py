@@ -1,5 +1,5 @@
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, cast
 
 import pytest
 from httpx import AsyncClient
@@ -28,7 +28,7 @@ async def _create_order(
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 201
-    return resp.json()
+    return cast("dict[str, Any]", resp.json())
 
 
 @pytest.mark.anyio
@@ -256,7 +256,7 @@ async def _create_offered_order(
         headers={"Authorization": f"Bearer {org_token}"},
     )
     assert resp.status_code == 200
-    return resp.json()
+    return cast("dict[str, Any]", resp.json())
 
 
 @pytest.mark.anyio
