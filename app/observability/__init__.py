@@ -9,7 +9,16 @@ from app.observability.metrics import setup_metrics, shutdown_metrics
 from app.observability.tracing import setup_tracing, shutdown_tracing
 
 
-def setup_observability(app: FastAPI) -> None:
+def instrument_app(app: FastAPI) -> None:
+    """Instrument the FastAPI app. Must be called during create_app(), before startup."""
+    settings = get_settings()
+    if not settings.observability.enabled:
+        return
+    FastAPIInstrumentor.instrument_app(app)
+
+
+def setup_observability() -> None:
+    """Initialize OTel SDK providers. Called during lifespan startup."""
     settings = get_settings()
     if not settings.observability.enabled:
         return
@@ -27,7 +36,6 @@ def setup_observability(app: FastAPI) -> None:
     setup_metrics(resource, endpoint, obs.metrics_export_interval_seconds * 1000)
     setup_logging(resource, endpoint, obs.console_log_level, obs.otel_log_level)
 
-    FastAPIInstrumentor.instrument_app(app)
     AsyncPGInstrumentor().instrument()
 
 

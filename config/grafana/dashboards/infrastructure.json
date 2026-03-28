@@ -52,7 +52,7 @@
       "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
       "targets": [
         {
-          "rawSql": "SELECT count() AS total FROM otel.otel_traces WHERE SpanKind = 'SPAN_KIND_SERVER' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime",
+          "rawSql": "SELECT count() AS total FROM otel.otel_traces WHERE SpanKind = 'Server' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime",
           "refId": "A",
           "format": 2
         }

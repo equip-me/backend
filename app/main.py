@@ -12,7 +12,7 @@ from app.core.database import get_tortoise_config
 from app.core.exceptions import AppError, app_error_handler
 from app.listings.models import ListingCategory
 from app.listings.router import router as listings_router
-from app.observability import setup_observability, shutdown_observability
+from app.observability import instrument_app, setup_observability, shutdown_observability
 from app.observability.middleware import TraceIDMiddleware
 from app.orders.router import router as orders_router
 from app.organizations.router import router as organizations_router
@@ -32,7 +32,7 @@ async def _seed_categories() -> None:
 
 @asynccontextmanager
 async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
-    setup_observability(application)
+    setup_observability()
     config = get_tortoise_config()
     async with RegisterTortoise(
         application,
@@ -66,6 +66,7 @@ def create_app() -> FastAPI:
 
     if settings.observability.enabled:
         application.add_middleware(TraceIDMiddleware)
+    instrument_app(application)
 
     application.add_exception_handler(AppError, _handle_app_error)
     application.include_router(users_router)
