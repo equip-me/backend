@@ -12,6 +12,7 @@ from app.core.database import get_tortoise_config
 from app.core.exceptions import AppError, app_error_handler
 from app.listings.models import ListingCategory
 from app.listings.router import router as listings_router
+from app.orders.router import router as orders_router
 from app.organizations.router import router as organizations_router
 from app.users.router import router as users_router
 
@@ -61,6 +62,7 @@ def create_app() -> FastAPI:
     application.include_router(users_router)
     application.include_router(organizations_router)
     application.include_router(listings_router)
+    application.include_router(orders_router)
 
     return application
 
