@@ -683,3 +683,91 @@ class TestGetOrder:
             headers={"Authorization": f"Bearer {other_token}"},
         )
         assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+class TestListingSideEffects:
+    async def test_cancel_active_restores_listing_to_published(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+
+        start = _today()
+        end = start + timedelta(days=5)
+        resp = await client.post(
+            "/orders/",
+            json={
+                "listing_id": listing_id,
+                "requested_start_date": start.isoformat(),
+                "requested_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 201
+        order_id = resp.json()["id"]
+
+        await client.patch(
+            f"/organizations/{org_id}/orders/{order_id}/offer",
+            json={
+                "offered_cost": "25000.00",
+                "offered_start_date": start.isoformat(),
+                "offered_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+
+        await client.patch(
+            f"/orders/{order_id}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+
+        # Fetch the order — lazy eval should transition to active since start is today
+        resp = await client.get(
+            f"/orders/{order_id}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.json()["status"] == "active"
+
+        # Check listing is in_rent
+        resp = await client.get(f"/listings/{listing_id}")
+        assert resp.json()["status"] == "in_rent"
+
+        # Cancel the order
+        resp = await client.patch(
+            f"/orders/{order_id}/cancel",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "canceled_by_user"
+
+        # Check listing is published again
+        resp = await client.get(f"/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+    async def test_cancel_confirmed_does_not_change_listing(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        await client.patch(
+            f"/orders/{order['id']}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+
+        resp = await client.get(f"/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+        await client.patch(
+            f"/orders/{order['id']}/cancel",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+
+        resp = await client.get(f"/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
