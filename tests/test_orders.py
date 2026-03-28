@@ -384,6 +384,78 @@ class TestOfferOrder:
         )
         assert resp.status_code == 400
 
+    async def test_offer_negative_cost_rejected(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        start = _today() + timedelta(days=2)
+        end = start + timedelta(days=5)
+        resp = await client.patch(
+            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            json={
+                "offered_cost": "-100.00",
+                "offered_start_date": start.isoformat(),
+                "offered_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 422
+
+    async def test_offer_end_before_start_rejected(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        start = _today() + timedelta(days=5)
+        end = _today() + timedelta(days=2)
+        resp = await client.patch(
+            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            json={
+                "offered_cost": "30000.00",
+                "offered_start_date": start.isoformat(),
+                "offered_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 422
+
+
+@pytest.mark.anyio
+class TestOrderNotFound:
+    async def test_get_nonexistent_order_returns_404(
+        self,
+        client: AsyncClient,
+        renter_token: str,
+    ) -> None:
+        # get_order_or_404 raises NotFoundError (404) before the requester check runs
+        resp = await client.get(
+            "/orders/XXXXXX",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 404
+
+    async def test_get_org_order_not_found(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        _listing_id, org_id, org_token = create_listing
+        resp = await client.get(
+            f"/organizations/{org_id}/orders/XXXXXX",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 404
+
 
 @pytest.mark.anyio
 class TestRejectOrder:
@@ -769,5 +841,56 @@ class TestListingSideEffects:
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
+        resp = await client.get(f"/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+    async def test_finished_order_restores_listing_to_published(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+
+        start = _today()
+        end = _today()
+        resp = await client.post(
+            "/orders/",
+            json={
+                "listing_id": listing_id,
+                "requested_start_date": start.isoformat(),
+                "requested_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 201
+        order_id = resp.json()["id"]
+
+        # Offer with both dates in the past so lazy eval immediately resolves to finished
+        past_start = start - timedelta(days=2)
+        past_end = start - timedelta(days=1)
+        await client.patch(
+            f"/organizations/{org_id}/orders/{order_id}/offer",
+            json={
+                "offered_cost": "5000.00",
+                "offered_start_date": past_start.isoformat(),
+                "offered_end_date": past_end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+
+        await client.patch(
+            f"/orders/{order_id}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+
+        # GET triggers lazy eval: confirmed → active → finished (both dates in past)
+        resp = await client.get(
+            f"/orders/{order_id}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.json()["status"] == "finished"
+
+        # Listing must be published — exercises the FINISHED branch in _apply_auto_transition
         resp = await client.get(f"/listings/{listing_id}")
         assert resp.json()["status"] == "published"
