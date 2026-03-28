@@ -25,6 +25,8 @@ async def _apply_auto_transition(order: Order) -> Order:
     order.status = new_status
     await order.save()
 
+    # Note: fetch_related may issue a redundant query if listing was already prefetch_related
+    # in the list endpoints. Acceptable until Temporal replaces lazy evaluation.
     await order.fetch_related("listing")
     listing: Listing = order.listing
 
@@ -80,13 +82,15 @@ async def offer_order(order: Order, data: OrderOffer) -> OrderRead:
     order.offered_start_date = data.offered_start_date
     order.offered_end_date = data.offered_end_date
     await order.save()
-    return OrderRead.model_validate(order)
+    # _to_read is safe here: OFFERED status won't trigger auto-transition
+    return await _to_read(order)
 
 
 async def reject_order(order: Order) -> OrderRead:
     order.status = transition(order.status, OrderAction.REJECT)
     await order.save()
-    return OrderRead.model_validate(order)
+    # _to_read is safe here: REJECTED is terminal, auto-transition won't fire
+    return await _to_read(order)
 
 
 async def confirm_order(order: Order) -> OrderRead:
@@ -98,7 +102,8 @@ async def confirm_order(order: Order) -> OrderRead:
 async def decline_order(order: Order) -> OrderRead:
     order.status = transition(order.status, OrderAction.DECLINE)
     await order.save()
-    return OrderRead.model_validate(order)
+    # _to_read is safe here: DECLINED is terminal, auto-transition won't fire
+    return await _to_read(order)
 
 
 async def _cancel_order(order: Order, action: OrderAction) -> OrderRead:
