@@ -564,3 +564,122 @@ class TestCancelOrder:
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+class TestListOrders:
+    async def test_list_user_orders(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        await _create_order(client, listing_id, renter_token)
+        await _create_order(client, listing_id, renter_token, start_offset=10)
+
+        resp = await client.get(
+            "/orders/",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 2
+
+    async def test_list_user_orders_empty(
+        self,
+        client: AsyncClient,
+        renter_token: str,
+    ) -> None:
+        resp = await client.get(
+            "/orders/",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == []
+
+    async def test_list_org_orders(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        await _create_order(client, listing_id, renter_token)
+
+        resp = await client.get(
+            f"/organizations/{org_id}/orders/",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()) == 1
+
+    async def test_list_org_orders_unauthorized(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        _listing_id, org_id, _org_token = create_listing
+
+        resp = await client.get(
+            f"/organizations/{org_id}/orders/",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 403
+
+
+@pytest.mark.anyio
+class TestGetOrder:
+    async def test_get_user_order(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        resp = await client.get(
+            f"/orders/{order['id']}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == order["id"]
+
+    async def test_get_org_order(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        resp = await client.get(
+            f"/organizations/{org_id}/orders/{order['id']}",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["id"] == order["id"]
+
+    async def test_get_order_not_requester(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        create_user: Any,
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        _, other_token = await create_user(
+            email="stranger@example.com",
+            phone="+79005554433",
+            name="Stranger",
+            surname="Person",
+        )
+        resp = await client.get(
+            f"/orders/{order['id']}",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 403
