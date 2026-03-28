@@ -200,7 +200,7 @@ async def create_listing(
     client: AsyncClient,
     verified_org: tuple[dict[str, Any], str],
     seed_categories: list[ListingCategory],
-) -> AsyncGenerator[tuple[str, str, str]]:
+) -> tuple[str, str, str]:
     """Create a published listing in a verified org. Returns (listing_id, org_id, org_admin_token)."""
     org_data, org_token = verified_org
     org_id = org_data["id"]
@@ -216,13 +216,15 @@ async def create_listing(
         },
         headers={"Authorization": f"Bearer {org_token}"},
     )
+    assert resp.status_code == 201, resp.text
     listing_id = resp.json()["id"]
 
-    await client.patch(
+    patch_resp = await client.patch(
         f"/organizations/{org_id}/listings/{listing_id}/status",
         json={"status": "published"},
         headers={"Authorization": f"Bearer {org_token}"},
     )
+    assert patch_resp.status_code == 200, patch_resp.text
 
     return listing_id, org_id, org_token
 
@@ -236,4 +238,4 @@ async def renter_token(create_user: Any) -> str:
         name="Renter",
         surname="Testov",
     )
-    return token
+    return str(token)
