@@ -429,3 +429,138 @@ class TestRejectOrder:
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+class TestConfirmOrder:
+    async def test_confirm_success(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        resp = await client.patch(
+            f"/orders/{order['id']}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "confirmed"
+
+    async def test_confirm_not_requester(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        create_user: Any,
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        _, other_token = await create_user(
+            email="other@example.com",
+            phone="+79009998877",
+            name="Other",
+            surname="User",
+        )
+        resp = await client.patch(
+            f"/orders/{order['id']}/confirm",
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 403
+
+    async def test_confirm_non_offered(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        resp = await client.patch(
+            f"/orders/{order['id']}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 400
+
+
+@pytest.mark.anyio
+class TestDeclineOrder:
+    async def test_decline_success(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        resp = await client.patch(
+            f"/orders/{order['id']}/decline",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "declined"
+
+
+@pytest.mark.anyio
+class TestCancelOrder:
+    async def test_user_cancel_confirmed(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        await client.patch(
+            f"/orders/{order['id']}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+
+        resp = await client.patch(
+            f"/orders/{order['id']}/cancel",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "canceled_by_user"
+
+    async def test_org_cancel_confirmed(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        await client.patch(
+            f"/orders/{order['id']}/confirm",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+
+        resp = await client.patch(
+            f"/organizations/{org_id}/orders/{order['id']}/cancel",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "canceled_by_organization"
+
+    async def test_cancel_pending_fails(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        resp = await client.patch(
+            f"/orders/{order['id']}/cancel",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 400
