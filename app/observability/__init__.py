@@ -6,7 +6,6 @@ from opentelemetry.sdk.resources import Resource
 from app.core.config import get_settings
 from app.observability.logs import setup_logging, shutdown_logging
 from app.observability.metrics import setup_metrics, shutdown_metrics
-from app.observability.middleware import TraceIDMiddleware
 from app.observability.tracing import setup_tracing, shutdown_tracing
 
 
@@ -30,8 +29,6 @@ def setup_observability(app: FastAPI) -> None:
 
     FastAPIInstrumentor.instrument_app(app)
     AsyncPGInstrumentor().instrument()
-
-    app.add_middleware(TraceIDMiddleware)
 
 
 def shutdown_observability() -> None:
