@@ -159,7 +159,8 @@ observability:
   enabled: true
   otlp_endpoint: "localhost:4317"
   service_name: "rental-platform"
-  log_level: INFO
+  console_log_level: DEBUG
+  otel_log_level: DEBUG
   metrics_export_interval_seconds: 30
 ```
 
@@ -393,12 +394,14 @@ observability:
   enabled: true
   otlp_endpoint: "otel-collector:4317"
   service_name: "rental-platform"
-  log_level: WARNING
+  console_log_level: WARNING
+  otel_log_level: DEBUG
   metrics_export_interval_seconds: 60
 ```
 
 Key differences from dev:
-- `log_level: WARNING` — less noise in prod
+- `console_log_level: WARNING` — `docker logs` stays quiet
+- `otel_log_level: DEBUG` — everything ships to ClickHouse for full debuggability
 - `metrics_export_interval_seconds: 60` — less frequent exports
 - `otlp_endpoint` points to docker service name, not localhost
 
