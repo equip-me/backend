@@ -1,8 +1,8 @@
 from datetime import date, datetime
-from decimal import Decimal
+from decimal import ROUND_HALF_UP, Decimal
 from typing import Self
 
-from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, field_serializer, field_validator, model_validator
 
 from app.core.enums import OrderStatus
 
@@ -57,3 +57,9 @@ class OrderRead(BaseModel):
     offered_end_date: date | None
     created_at: datetime
     updated_at: datetime
+
+    @field_serializer("estimated_cost", "offered_cost")
+    def serialize_decimal(self, v: Decimal | None) -> str | None:
+        if v is None:
+            return None
+        return str(v.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP))
