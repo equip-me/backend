@@ -13,6 +13,15 @@ cors:
   allow_methods: ["*"]
   allow_headers: ["*"]
   allow_credentials: true
+  expose_headers: ["X-Trace-Id"]
+
+observability:
+  enabled: true
+  otlp_endpoint: "localhost:4317"
+  service_name: "rental-platform"
+  console_log_level: "DEBUG"
+  otel_log_level: "DEBUG"
+  metrics_export_interval_seconds: 30
 
 seed_categories:
   - "Спецтехника"

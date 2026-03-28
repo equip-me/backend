@@ -1,0 +1,75 @@
+{
+  "title": "Infrastructure",
+  "uid": "infrastructure",
+  "tags": ["rental-platform"],
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Log Volume by Level",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, SeverityText AS level, count() AS logs FROM otel.otel_logs WHERE ServiceName = 'rental-platform' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time, level ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "DB Query Duration (asyncpg)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, quantile(0.50)(Duration / 1000000) AS p50_ms, quantile(0.95)(Duration / 1000000) AS p95_ms FROM otel.otel_traces WHERE SpanName LIKE '%asyncpg%' OR SpanAttributes['db.system'] = 'postgresql' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Recent Errors (ERROR + WARNING)",
+      "gridPos": {"h": 10, "w": 24, "x": 0, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT Timestamp, SeverityText, Body, TraceId, LogAttributes FROM otel.otel_logs WHERE ServiceName = 'rental-platform' AND SeverityNumber >= 13 AND Timestamp >= $__fromTime AND Timestamp <= $__toTime ORDER BY Timestamp DESC LIMIT 100",
+          "refId": "A",
+          "format": 2
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Total Traces (Last Hour)",
+      "gridPos": {"h": 4, "w": 6, "x": 0, "y": 18},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT count() AS total FROM otel.otel_traces WHERE SpanKind = 'Server' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime",
+          "refId": "A",
+          "format": 2
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Total Logs (Last Hour)",
+      "gridPos": {"h": 4, "w": 6, "x": 6, "y": 18},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT count() AS total FROM otel.otel_logs WHERE ServiceName = 'rental-platform' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime",
+          "refId": "A",
+          "format": 2
+        }
+      ]
+    }
+  ]
+}

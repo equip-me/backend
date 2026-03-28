@@ -5,3 +5,6 @@ database:
 
 jwt:
   secret: test-secret-not-for-production-xx
+
+observability:
+  enabled: false

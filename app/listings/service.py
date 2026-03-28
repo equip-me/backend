@@ -12,6 +12,8 @@ from app.listings.schemas import (
     ListingRead,
     ListingUpdate,
 )
+from app.observability.events import emit_event
+from app.observability.tracing import traced
 from app.organizations.models import Organization
 from app.users.models import User
 
@@ -31,6 +33,7 @@ def _category_to_read(category: ListingCategory) -> ListingCategoryRead:
     )
 
 
+@traced
 async def create_category(org: Organization, user: User, data: ListingCategoryCreate) -> ListingCategoryRead:
     category = await create_with_short_id(
         ListingCategory,
@@ -48,6 +51,7 @@ async def create_category(org: Organization, user: User, data: ListingCategoryCr
     )
 
 
+@traced
 async def list_public_categories() -> list[ListingCategoryRead]:
     verified_org_ids = await _verified_org_ids()
     categories = (
@@ -77,6 +81,7 @@ async def _validate_category(category_id: str, org: Organization) -> ListingCate
     return category
 
 
+@traced
 async def create_listing(org: Organization, user: User, data: ListingCreate) -> ListingRead:
     category = await _validate_category(data.category_id, org)
     listing = await create_with_short_id(
@@ -95,9 +100,11 @@ async def create_listing(org: Organization, user: User, data: ListingCreate) -> 
         setup=data.setup,
     )
     await listing.fetch_related("category")
+    emit_event("listing.created", listing_id=listing.id, org_id=org.id)
     return ListingRead.model_validate(listing)
 
 
+@traced
 async def update_listing(listing: Listing, org: Organization, data: ListingUpdate) -> ListingRead:
     update_data = data.model_dump(exclude_unset=True)
     if "category_id" in update_data:
@@ -110,22 +117,28 @@ async def update_listing(listing: Listing, org: Organization, data: ListingUpdat
     return ListingRead.model_validate(listing)
 
 
+@traced
 async def delete_listing(listing: Listing) -> None:
     await listing.delete()
 
 
+@traced
 async def change_listing_status(listing: Listing, status: ListingStatus) -> ListingRead:
+    old_status = listing.status
     listing.status = status
     await listing.save()
     await listing.fetch_related("category")
+    emit_event("listing.status_changed", listing_id=listing.id, old_status=old_status.value, new_status=status.value)
     return ListingRead.model_validate(listing)
 
 
+@traced
 async def list_org_listings(org_id: str) -> list[ListingRead]:
     listings = await Listing.filter(organization_id=org_id).prefetch_related("category").order_by("-updated_at")
     return [ListingRead.model_validate(listing) for listing in listings]
 
 
+@traced
 async def list_public_listings(
     category_id: str | None = None,
     organization_id: str | None = None,
@@ -142,6 +155,7 @@ async def list_public_listings(
     return [ListingRead.model_validate(listing) for listing in listings]
 
 
+@traced
 async def list_org_categories(org_id: str) -> list[ListingCategoryRead]:
     org_categories = (
         await ListingCategory.filter(listings__organization_id=org_id)

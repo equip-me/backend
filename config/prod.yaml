@@ -2,3 +2,9 @@ cors:
   allow_origins:
     - "https://equip-me.ru"
     - "https://www.equip-me.ru"
+
+observability:
+  otlp_endpoint: "otel-collector:4317"
+  console_log_level: "WARNING"
+  otel_log_level: "DEBUG"
+  metrics_export_interval_seconds: 60

@@ -18,6 +18,11 @@ pyjwt = "*"
 dadata = ">=25.10.0"
 gunicorn = ">=25.1.0"
 email-validator = "*"
+opentelemetry-api = "*"
+opentelemetry-sdk = "*"
+opentelemetry-exporter-otlp-proto-grpc = "*"
+opentelemetry-instrumentation-fastapi = "*"
+opentelemetry-instrumentation-asyncpg = "*"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "*"
@@ -106,6 +111,19 @@ ignore_missing_imports = true
 module = ["dadata.*"]
 ignore_missing_imports = true
 follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+module = ["opentelemetry.*"]
+ignore_missing_imports = true
+follow_untyped_imports = true
+
+[[tool.mypy.overrides]]
+module = ["app.observability"]
+disallow_untyped_calls = false
+
+[[tool.mypy.overrides]]
+module = ["grpc.*"]
+ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"

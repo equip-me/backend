@@ -27,6 +27,16 @@ class CORSSettings(BaseModel):
     allow_methods: list[str] = ["*"]
     allow_headers: list[str] = ["*"]
     allow_credentials: bool = True
+    expose_headers: list[str] = []
+
+
+class ObservabilitySettings(BaseModel):
+    enabled: bool = True
+    otlp_endpoint: str = "localhost:4317"
+    service_name: str = "rental-platform"
+    console_log_level: str = "DEBUG"
+    otel_log_level: str = "DEBUG"
+    metrics_export_interval_seconds: int = 30
 
 
 class Settings(BaseSettings):
@@ -36,6 +46,7 @@ class Settings(BaseSettings):
     database: DatabaseSettings = DatabaseSettings()
     jwt: JWTSettings = JWTSettings()
     cors: CORSSettings = CORSSettings()
+    observability: ObservabilitySettings = ObservabilitySettings()
     dadata_api_key: str = ""
     seed_categories: list[str] = []
 

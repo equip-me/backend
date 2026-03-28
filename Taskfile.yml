@@ -15,7 +15,7 @@ tasks:
 
   # ── Dev Infrastructure ────────────────────────────────
   infra:up:
-    desc: Start dev infrastructure (DB)
+    desc: Start dev infrastructure (DB, OTel Collector, ClickHouse, Grafana)
     cmds:
       - docker compose -p rental-dev -f docker-compose.dev.yml up -d
 

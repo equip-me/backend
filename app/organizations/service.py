@@ -1,4 +1,5 @@
 import asyncio
+import time
 from datetime import UTC, datetime
 from typing import Any
 from uuid import uuid4
@@ -15,6 +16,9 @@ from app.core.exceptions import (
     PermissionDeniedError,
 )
 from app.core.identifiers import create_with_short_id
+from app.observability.events import emit_event
+from app.observability.metrics import dadata_duration, dadata_requests
+from app.observability.tracing import traced
 from app.organizations.models import Membership, Organization, OrganizationContact, PaymentDetails
 from app.organizations.schemas import (
     ContactRead,
@@ -53,6 +57,7 @@ def _extract_dadata_fields(result: dict[str, Any]) -> dict[str, Any]:
     }
 
 
+@traced
 async def create_organization(
     data: OrganizationCreate,
     user: User,
@@ -62,9 +67,18 @@ async def create_organization(
     if existing:
         raise AlreadyExistsError("Organization with this INN already exists")
 
+    start = time.monotonic()
     try:
         results = await asyncio.to_thread(dadata.find_by_id, "party", data.inn)
+        duration_ms = (time.monotonic() - start) * 1000
+        dadata_requests.add(1, {"success": "true"})
+        dadata_duration.record(duration_ms)
+        emit_event("dadata.called", inn=data.inn, success="true", duration_ms=str(int(duration_ms)))
     except Exception as e:
+        duration_ms = (time.monotonic() - start) * 1000
+        dadata_requests.add(1, {"success": "false"})
+        dadata_duration.record(duration_ms)
+        emit_event("dadata.called", inn=data.inn, success="false", duration_ms=str(int(duration_ms)))
         raise ExternalServiceError("Dadata service unavailable") from e
 
     if not results:
@@ -99,9 +113,11 @@ async def create_organization(
         )
 
     await org.fetch_related("contacts")
+    emit_event("organization.created", org_id=org.id, inn=data.inn)
     return OrganizationRead.model_validate(org)
 
 
+@traced
 async def get_organization(org_id: str) -> OrganizationRead:
     org = await Organization.get_or_none(id=org_id).prefetch_related("contacts")
     if org is None:
@@ -109,6 +125,7 @@ async def get_organization(org_id: str) -> OrganizationRead:
     return OrganizationRead.model_validate(org)
 
 
+@traced
 async def list_user_organizations(user: User) -> list[OrganizationRead]:
     memberships = await Membership.filter(
         user=user,
@@ -117,6 +134,7 @@ async def list_user_organizations(user: User) -> list[OrganizationRead]:
     return [OrganizationRead.model_validate(m.organization) for m in memberships]
 
 
+@traced
 async def replace_contacts(org_id: str, data: ContactsReplace) -> list[ContactRead]:
     async with in_transaction():
         await OrganizationContact.filter(organization_id=org_id).delete()
@@ -132,6 +150,7 @@ async def replace_contacts(org_id: str, data: ContactsReplace) -> list[ContactRe
     return [ContactRead.model_validate(c) for c in contacts]
 
 
+@traced
 async def get_payment_details(org_id: str) -> PaymentDetailsRead:
     pd = await PaymentDetails.get_or_none(organization_id=org_id)
     if pd is None:
@@ -139,6 +158,7 @@ async def get_payment_details(org_id: str) -> PaymentDetailsRead:
     return PaymentDetailsRead.model_validate(pd)
 
 
+@traced
 async def upsert_payment_details(org_id: str, data: PaymentDetailsCreate) -> PaymentDetailsRead:
     pd = await PaymentDetails.get_or_none(organization_id=org_id)
     if pd is None:
@@ -154,6 +174,7 @@ async def upsert_payment_details(org_id: str, data: PaymentDetailsCreate) -> Pay
     return PaymentDetailsRead.model_validate(pd)
 
 
+@traced
 async def invite_member(org_id: str, data: MembershipInvite) -> MembershipRead:
     target_user = await User.get_or_none(id=data.user_id)
     if target_user is None:
@@ -168,9 +189,11 @@ async def invite_member(org_id: str, data: MembershipInvite) -> MembershipRead:
         role=data.role,
         status=MembershipStatus.INVITED,
     )
+    emit_event("membership.invited", org_id=org_id, user_id=data.user_id, role=data.role.value)
     return MembershipRead.model_validate(membership)
 
 
+@traced
 async def join_organization(org_id: str, user: User) -> MembershipRead:
     existing = await Membership.get_or_none(user=user, organization_id=org_id)
     if existing is not None:
@@ -185,6 +208,7 @@ async def join_organization(org_id: str, user: User) -> MembershipRead:
     return MembershipRead.model_validate(membership)
 
 
+@traced
 async def approve_candidate(org_id: str, member_id: str, data: MembershipApprove) -> MembershipRead:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
@@ -197,6 +221,7 @@ async def approve_candidate(org_id: str, member_id: str, data: MembershipApprove
     return MembershipRead.model_validate(membership)
 
 
+@traced
 async def accept_invitation(org_id: str, member_id: str, user: User) -> MembershipRead:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
@@ -209,6 +234,7 @@ async def accept_invitation(org_id: str, member_id: str, user: User) -> Membersh
         raise AppValidationError("Only invitations can be accepted")
     membership.status = MembershipStatus.MEMBER
     await membership.save()
+    emit_event("membership.accepted", org_id=org_id, user_id=user.id)
     return MembershipRead.model_validate(membership)
 
 
@@ -224,6 +250,7 @@ async def _is_last_admin(org_id: str, member_id: str) -> bool:
     return membership.role == MembershipRole.ADMIN
 
 
+@traced
 async def change_member_role(org_id: str, member_id: str, data: MembershipRoleUpdate) -> MembershipRead:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
@@ -237,6 +264,7 @@ async def change_member_role(org_id: str, member_id: str, data: MembershipRoleUp
     return MembershipRead.model_validate(membership)
 
 
+@traced
 async def remove_member(org_id: str, member_id: str, user: User) -> None:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
@@ -267,11 +295,13 @@ async def remove_member(org_id: str, member_id: str, user: User) -> None:
     await membership.delete()
 
 
+@traced
 async def list_members(org_id: str) -> list[MembershipRead]:
     members = await Membership.filter(organization_id=org_id)
     return [MembershipRead.model_validate(m) for m in members]
 
 
+@traced
 async def verify_organization(org_id: str) -> OrganizationRead:
     org = await Organization.get_or_none(id=org_id)
     if org is None:
@@ -279,4 +309,5 @@ async def verify_organization(org_id: str) -> OrganizationRead:
     org.status = OrganizationStatus.VERIFIED
     await org.save()
     await org.fetch_related("contacts")
+    emit_event("organization.verified", org_id=org_id)
     return OrganizationRead.model_validate(org)
