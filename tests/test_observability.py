@@ -4,6 +4,7 @@ import logging
 import pytest
 
 from app.observability.context import RequestContext, request_context
+from app.observability.events import emit_event
 from app.observability.logs import RequestContextFilter
 from app.observability.tracing import _extract_span_attributes, traced
 
@@ -91,3 +92,13 @@ async def test_context_filter_defaults_when_no_context() -> None:
     attrs = vars(record)
     assert attrs["user_id"] == ""
     assert attrs["org_id"] == ""
+
+
+async def test_emit_event_logs_with_extra(caplog: pytest.LogCaptureFixture) -> None:
+    with caplog.at_level(logging.INFO, logger="app.events"):
+        emit_event("order.created", order_id="ord-1", listing_id="lst-2")
+    assert len(caplog.records) == 1
+    record = caplog.records[0]
+    assert record.message == "order.created"
+    assert vars(record)["event.name"] == "order.created"
+    assert vars(record)["order_id"] == "ord-1"
