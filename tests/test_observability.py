@@ -1,11 +1,16 @@
 import inspect
 import logging
+from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
+from fastapi import FastAPI
+from httpx import ASGITransport
 
 from app.observability.context import RequestContext, request_context
 from app.observability.events import emit_event
 from app.observability.logs import RequestContextFilter
+from app.observability.middleware import TraceIDMiddleware
 from app.observability.tracing import _extract_span_attributes, traced
 
 
@@ -102,3 +107,50 @@ async def test_emit_event_logs_with_extra(caplog: pytest.LogCaptureFixture) -> N
     assert record.message == "order.created"
     assert vars(record)["event.name"] == "order.created"
     assert vars(record)["order_id"] == "ord-1"
+
+
+async def test_trace_id_middleware_sets_header_when_span_valid() -> None:
+    test_app = FastAPI()
+    test_app.add_middleware(TraceIDMiddleware)
+
+    @test_app.get("/test")
+    async def _endpoint() -> dict[str, bool]:
+        return {"ok": True}
+
+    mock_span_ctx = MagicMock()
+    mock_span_ctx.is_valid = True
+    mock_span_ctx.trace_id = 0x0102030405060708090A0B0C0D0E0F10
+
+    mock_span = MagicMock()
+    mock_span.get_span_context.return_value = mock_span_ctx
+
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with patch("app.observability.middleware.trace.get_current_span", return_value=mock_span):
+            resp = await client.get("/test")
+
+    assert resp.status_code == 200
+    assert resp.headers["x-trace-id"] == "0102030405060708090a0b0c0d0e0f10"
+
+
+async def test_trace_id_middleware_no_header_when_span_invalid() -> None:
+    test_app = FastAPI()
+    test_app.add_middleware(TraceIDMiddleware)
+
+    @test_app.get("/test")
+    async def _endpoint() -> dict[str, bool]:
+        return {"ok": True}
+
+    mock_span_ctx = MagicMock()
+    mock_span_ctx.is_valid = False
+
+    mock_span = MagicMock()
+    mock_span.get_span_context.return_value = mock_span_ctx
+
+    transport = ASGITransport(app=test_app)
+    async with httpx.AsyncClient(transport=transport, base_url="http://test") as client:
+        with patch("app.observability.middleware.trace.get_current_span", return_value=mock_span):
+            resp = await client.get("/test")
+
+    assert resp.status_code == 200
+    assert "x-trace-id" not in resp.headers
