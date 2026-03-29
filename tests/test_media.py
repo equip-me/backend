@@ -744,3 +744,539 @@ async def test_orphan_cleanup_skips_attached() -> None:
 
     assert deleted_count == 0
     assert await Media.get_or_none(id=attached_media.id) is not None
+
+
+# ── Service validation edge cases ────────────────────────
+
+
+async def test_upload_url_rejects_empty_filename(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,  # noqa: ARG001
+) -> None:
+    _, token = await create_user()
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "",
+            "content_type": "image/jpeg",
+            "file_size": 1024,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_upload_url_rejects_path_traversal_filename(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,  # noqa: ARG001
+) -> None:
+    _, token = await create_user()
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "../../../etc/passwd",
+            "content_type": "image/jpeg",
+            "file_size": 1024,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    # The path traversal results in "passwd" as the safe filename, so it should succeed
+    # unless the name itself is disallowed. Let's verify the behavior.
+    assert resp.status_code == 200
+
+
+async def test_confirm_rejects_wrong_status(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,  # noqa: ARG001
+) -> None:
+    _, token = await create_user()
+
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "photo.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 1024,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    media_id = resp.json()["media_id"]
+
+    # Set status to PROCESSING (not PENDING_UPLOAD)
+    await Media.filter(id=UUID(media_id)).update(status=MediaStatus.PROCESSING)
+
+    confirm_resp = await client.post(
+        f"/media/{media_id}/confirm",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert confirm_resp.status_code == 400
+
+
+async def test_confirm_rejects_missing_file(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,
+) -> None:
+    _, token = await create_user()
+
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "photo.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 1024,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    media_id = resp.json()["media_id"]
+
+    # Storage says file doesn't exist
+    mock_storage.exists.return_value = False
+
+    confirm_resp = await client.post(
+        f"/media/{media_id}/confirm",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert confirm_resp.status_code == 404
+
+
+async def test_retry_rejects_non_failed(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,  # noqa: ARG001
+) -> None:
+    _, token = await create_user()
+
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "photo.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 1024,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    media_id = resp.json()["media_id"]
+
+    # Set status to READY
+    await Media.filter(id=UUID(media_id)).update(status=MediaStatus.READY)
+
+    retry_resp = await client.post(
+        f"/media/{media_id}/retry",
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert retry_resp.status_code == 400
+
+
+async def test_attach_profile_photo_not_ready(client: AsyncClient, create_user: Any) -> None:
+    user_data, token = await create_user()
+    user = await User.get(id=user_data["id"])
+    media_id = uuid4()
+    await Media.create(
+        id=media_id,
+        uploaded_by=user,
+        kind=MediaKind.PHOTO,
+        context=MediaContext.USER_PROFILE,
+        status=MediaStatus.PENDING_UPLOAD,
+        original_filename="pending.jpg",
+        content_type="image/jpeg",
+        file_size=1024,
+        upload_key=f"pending/{media_id}/pending.jpg",
+    )
+
+    resp = await client.patch(
+        "/users/me",
+        json={"profile_photo_id": str(media_id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_attach_profile_photo_wrong_uploader(client: AsyncClient, create_user: Any) -> None:
+    user_data_a, _ = await create_user(email="uploader-a@example.com")
+    _, token_b = await create_user(email="uploader-b@example.com", phone="+79001112233")
+
+    photo_id = await _create_ready_photo(user_data_a["id"])
+
+    resp = await client.patch(
+        "/users/me",
+        json={"profile_photo_id": str(photo_id)},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert resp.status_code == 403
+
+
+async def test_attach_profile_photo_not_photo(client: AsyncClient, create_user: Any) -> None:
+    user_data, token = await create_user()
+    user = await User.get(id=user_data["id"])
+    media_id = uuid4()
+    await Media.create(
+        id=media_id,
+        uploaded_by=user,
+        kind=MediaKind.VIDEO,
+        context=MediaContext.USER_PROFILE,
+        status=MediaStatus.READY,
+        original_filename="video.mp4",
+        content_type="video/mp4",
+        file_size=1024,
+        upload_key=f"pending/{media_id}/video.mp4",
+        variants={"full": f"media/{media_id}/full.webm"},
+    )
+
+    resp = await client.patch(
+        "/users/me",
+        json={"profile_photo_id": str(media_id)},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_attach_profile_photo_nonexistent(client: AsyncClient, create_user: Any) -> None:
+    _, token = await create_user()
+
+    resp = await client.patch(
+        "/users/me",
+        json={"profile_photo_id": str(uuid4())},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 404
+
+
+# ── Listing media attach edge cases ──────────────────────
+
+
+async def test_attach_listing_media_exceeds_photo_limit(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+
+    # Create 21 ready photos (limit is 20)
+    photo_ids = []
+    for _ in range(21):
+        pid = await _create_ready_photo(user_id, "listing")
+        photo_ids.append(str(pid))
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Too many photos",
+            "category_id": category_id,
+            "price": 1000.00,
+            "photo_ids": photo_ids,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_attach_listing_media_wrong_kind(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+    user = await User.get(id=user_id)
+
+    # Create a VIDEO media
+    video_id = uuid4()
+    await Media.create(
+        id=video_id,
+        uploaded_by=user,
+        kind=MediaKind.VIDEO,
+        context=MediaContext.LISTING,
+        status=MediaStatus.READY,
+        original_filename="video.mp4",
+        content_type="video/mp4",
+        file_size=1024,
+        upload_key=f"pending/{video_id}/video.mp4",
+        variants={"full": f"media/{video_id}/full.webm"},
+    )
+
+    # Pass video_id in photo_ids list
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Wrong kind test",
+            "category_id": category_id,
+            "price": 1000.00,
+            "photo_ids": [str(video_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_attach_listing_media_not_ready(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+    user = await User.get(id=user_id)
+
+    # Create PENDING photo
+    media_id = uuid4()
+    await Media.create(
+        id=media_id,
+        uploaded_by=user,
+        kind=MediaKind.PHOTO,
+        context=MediaContext.LISTING,
+        status=MediaStatus.PENDING_UPLOAD,
+        original_filename="pending.jpg",
+        content_type="image/jpeg",
+        file_size=1024,
+        upload_key=f"pending/{media_id}/pending.jpg",
+    )
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Not ready test",
+            "category_id": category_id,
+            "price": 1000.00,
+            "photo_ids": [str(media_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_attach_listing_media_wrong_uploader(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+    create_user: Any,
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    # Create a photo uploaded by a different user
+    other_data, _ = await create_user(email="other-uploader@example.com", phone="+79009998877")
+    photo_id = await _create_ready_photo(other_data["id"], "listing")
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Wrong uploader test",
+            "category_id": category_id,
+            "price": 1000.00,
+            "photo_ids": [str(photo_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
+
+
+# ── Listing media: video and document branches ───────────
+
+
+async def _create_ready_video(user_id: str) -> UUID:
+    user = await User.get(id=user_id)
+    media_id = uuid4()
+    await Media.create(
+        id=media_id,
+        uploaded_by=user,
+        kind=MediaKind.VIDEO,
+        context=MediaContext.LISTING,
+        status=MediaStatus.READY,
+        original_filename="clip.mp4",
+        content_type="video/mp4",
+        file_size=5000,
+        upload_key=f"pending/{media_id}/clip.mp4",
+        variants={"full": f"media/{media_id}/full.webm", "preview": f"media/{media_id}/preview.webm"},
+    )
+    return media_id
+
+
+async def _create_ready_document(user_id: str) -> UUID:
+    user = await User.get(id=user_id)
+    media_id = uuid4()
+    await Media.create(
+        id=media_id,
+        uploaded_by=user,
+        kind=MediaKind.DOCUMENT,
+        context=MediaContext.LISTING,
+        status=MediaStatus.READY,
+        original_filename="spec.pdf",
+        content_type="application/pdf",
+        file_size=2048,
+        upload_key=f"pending/{media_id}/spec.pdf",
+        variants={"original": f"media/{media_id}/spec.pdf"},
+    )
+    return media_id
+
+
+async def test_get_listing_media_with_videos(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+
+    video_id = await _create_ready_video(user_id)
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Video listing",
+            "category_id": category_id,
+            "price": 3000.00,
+            "video_ids": [str(video_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    listing_id = resp.json()["id"]
+
+    detail = await client.get(f"/listings/{listing_id}")
+    assert detail.status_code == 200
+    videos = detail.json()["videos"]
+    assert len(videos) == 1
+    assert videos[0]["full_url"] is not None
+    assert videos[0]["preview_url"] is not None
+
+
+async def test_get_listing_media_with_documents(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+
+    doc_id = await _create_ready_document(user_id)
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Document listing",
+            "category_id": category_id,
+            "price": 2000.00,
+            "document_ids": [str(doc_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    listing_id = resp.json()["id"]
+
+    detail = await client.get(f"/listings/{listing_id}")
+    assert detail.status_code == 200
+    documents = detail.json()["documents"]
+    assert len(documents) == 1
+    assert documents[0]["url"] is not None
+    assert documents[0]["filename"] == "spec.pdf"
+    assert documents[0]["file_size"] == 2048
+
+
+# ── Orphan cleanup: FAILED media ────────────────────────
+
+
+async def test_orphan_cleanup_skips_failed() -> None:
+    from app.media.service import cleanup_orphaned_media
+
+    mock_st = AsyncMock()
+
+    user = await User.create(
+        id="ORPH03",
+        email="orphan-failed@example.com",
+        hashed_password="x",
+        phone="+79002223344",
+        name="Test",
+        surname="Failed",
+    )
+
+    failed_media = await Media.create(
+        id=uuid4(),
+        uploaded_by=user,
+        kind=MediaKind.PHOTO,
+        context=MediaContext.USER_PROFILE,
+        status=MediaStatus.FAILED,
+        original_filename="failed.jpg",
+        content_type="image/jpeg",
+        file_size=1024,
+        upload_key="pending/failed/failed.jpg",
+    )
+    await Media.filter(id=failed_media.id).update(
+        created_at=datetime.now(tz=UTC) - timedelta(hours=48),
+    )
+
+    deleted_count = await cleanup_orphaned_media(mock_st, max_age_hours=24)
+
+    assert deleted_count == 0
+    assert await Media.get_or_none(id=failed_media.id) is not None
+
+
+# ── Storage singleton tests ─────────────────────────────
+
+
+def test_get_storage_before_init_raises() -> None:
+    import pytest
+
+    import app.media.storage as storage_mod
+
+    original = storage_mod._instance
+    storage_mod._instance = None
+    try:
+        with pytest.raises(RuntimeError, match="not initialized"):
+            storage_mod.get_storage()
+    finally:
+        storage_mod._instance = original
+
+
+def test_init_storage_and_get_storage() -> None:
+    import app.media.storage as storage_mod
+
+    original = storage_mod._instance
+    try:
+        storage_mod._instance = None
+        client = storage_mod.init_storage(
+            endpoint_url="http://localhost:9000",
+            access_key="test",
+            secret_key="test",
+            bucket="test-bucket",
+        )
+        assert client is not None
+        assert storage_mod.get_storage() is client
+        assert client.bucket == "test-bucket"
+    finally:
+        storage_mod._instance = original

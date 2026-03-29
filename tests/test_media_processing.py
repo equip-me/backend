@@ -106,3 +106,132 @@ async def test_document_processing_is_passthrough() -> None:
     original = b"%PDF-1.4 fake pdf content"
     result = process_document(original)
     assert result == original
+
+
+# ── RGBA / palette mode conversion ──────────────────────
+
+
+def _create_rgba_image(width: int = 400, height: int = 300) -> bytes:
+    img = Image.new("RGBA", (width, height), color=(255, 0, 0, 128))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+def _create_palette_image(width: int = 400, height: int = 300) -> bytes:
+    img = Image.new("P", (width, height))
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue()
+
+
+async def test_process_photo_rgba_conversion() -> None:
+    from app.media.processing import process_photo
+
+    original = _create_rgba_image()
+    variant_specs: list[dict[str, int | str]] = [
+        {"name": "medium", "max_width": 600, "quality": 80},
+    ]
+
+    results = process_photo(original, variant_specs)
+
+    assert "medium" in results
+    img = Image.open(io.BytesIO(results["medium"]))
+    assert img.format == "WEBP"
+
+
+async def test_process_photo_palette_mode() -> None:
+    from app.media.processing import process_photo
+
+    original = _create_palette_image()
+    variant_specs: list[dict[str, int | str]] = [
+        {"name": "small", "max_width": 200, "quality": 75},
+    ]
+
+    results = process_photo(original, variant_specs)
+
+    assert "small" in results
+    img = Image.open(io.BytesIO(results["small"]))
+    assert img.format == "WEBP"
+
+
+# ── process_video with mocked ffmpeg ────────────────────
+
+
+def _write_fake_output(path: str, data: bytes) -> None:
+    """Write fake ffmpeg output (sync helper to avoid ASYNC240 lint)."""
+    from pathlib import Path
+
+    Path(path).write_bytes(data)
+
+
+async def test_process_video_calls_ffmpeg() -> None:
+    from unittest.mock import AsyncMock, patch
+
+    from app.media.processing import process_video
+
+    variant_specs: list[dict[str, int | str | bool]] = [
+        {"name": "full", "max_height": 720, "video_bitrate": "1.5M", "audio": True},
+    ]
+
+    async def fake_subprocess(*args: object, **_kwargs: object) -> AsyncMock:
+        # The output path is the last argument to ffmpeg
+        output_path = str(args[-1])
+        _write_fake_output(output_path, b"fake webm data")
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+        return mock_proc
+
+    with patch("app.media.processing.asyncio.create_subprocess_exec", side_effect=fake_subprocess):
+        results = await process_video(b"fake input video", variant_specs, "input.mp4")
+
+    assert "full" in results
+    assert results["full"] == b"fake webm data"
+
+
+async def test_process_video_multiple_variants() -> None:
+    from unittest.mock import AsyncMock, patch
+
+    from app.media.processing import process_video
+
+    variant_specs: list[dict[str, int | str | bool]] = [
+        {"name": "full", "max_height": 720, "video_bitrate": "1.5M", "audio": True},
+        {"name": "preview", "max_height": 480, "video_bitrate": "500k", "audio": False, "max_duration_seconds": 10},
+    ]
+
+    async def fake_subprocess(*args: object, **_kwargs: object) -> AsyncMock:
+        output_path = str(args[-1])
+        _write_fake_output(output_path, b"variant data")
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 0
+        mock_proc.communicate = AsyncMock(return_value=(b"", b""))
+        return mock_proc
+
+    with patch("app.media.processing.asyncio.create_subprocess_exec", side_effect=fake_subprocess):
+        results = await process_video(b"fake video", variant_specs, "clip.mp4")
+
+    assert "full" in results
+    assert "preview" in results
+
+
+async def test_process_video_ffmpeg_failure() -> None:
+    from unittest.mock import AsyncMock, patch
+
+    import pytest
+
+    from app.media.processing import process_video
+
+    variant_specs: list[dict[str, int | str | bool]] = [
+        {"name": "full", "max_height": 720, "video_bitrate": "1.5M", "audio": True},
+    ]
+
+    async def failing_subprocess(*_args: object, **_kwargs: object) -> AsyncMock:
+        mock_proc = AsyncMock()
+        mock_proc.returncode = 1
+        mock_proc.communicate = AsyncMock(return_value=(b"", b"ffmpeg error output"))
+        return mock_proc
+
+    with patch("app.media.processing.asyncio.create_subprocess_exec", side_effect=failing_subprocess):
+        with pytest.raises(RuntimeError, match="ffmpeg failed for variant 'full'"):
+            await process_video(b"fake video", variant_specs, "input.mp4")
