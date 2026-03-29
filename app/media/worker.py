@@ -5,6 +5,8 @@ from uuid import UUID
 
 from arq import create_pool, run_worker
 from arq.connections import ArqRedis, RedisSettings
+from arq.cron import cron
+from arq.typing import WorkerCoroutine
 
 from app.core.config import get_settings
 from app.core.enums import MediaKind, MediaStatus
@@ -121,8 +123,26 @@ async def get_arq_pool() -> ArqRedis:
     return await create_pool(redis_settings)
 
 
+async def cleanup_orphans_cron(_ctx: dict[Any, Any]) -> None:
+    from tortoise import Tortoise
+
+    from app.core.database import get_tortoise_config
+    from app.media.service import cleanup_orphaned_media
+
+    if not Tortoise._inited:
+        await Tortoise.init(config=get_tortoise_config())
+
+    settings = get_settings()
+    storage = _get_storage()
+    deleted = await cleanup_orphaned_media(storage, settings.media.orphan_cleanup_after_hours)
+    logger.info("Orphan cleanup: deleted %d media records", deleted)
+
+
 class WorkerSettings:
     functions: ClassVar[list[Any]] = [process_media_job]
+    cron_jobs: ClassVar[list[Any]] = [
+        cron(cast("WorkerCoroutine", cleanup_orphans_cron), minute={0}),
+    ]
     max_jobs = 10
 
     @staticmethod
