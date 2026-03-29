@@ -135,7 +135,6 @@ Initialized at app startup (lifespan), injected via FastAPI dependency.
 storage:
   endpoint_url: "http://localhost:9000"
   bucket: "rental-media"
-  region: "us-east-1"
   presigned_url_expiry_seconds: 3600
 
 media:
