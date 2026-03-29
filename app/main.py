@@ -12,6 +12,7 @@ from app.core.database import get_tortoise_config
 from app.core.exceptions import AppError, app_error_handler
 from app.listings.models import ListingCategory
 from app.listings.router import router as listings_router
+from app.media.storage import init_storage
 from app.observability import instrument_app, setup_observability, shutdown_observability
 from app.observability.middleware import TraceIDMiddleware
 from app.orders.router import router as orders_router
@@ -40,6 +41,14 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
         generate_schemas=True,
     ):
         await _seed_categories()
+        settings = get_settings()
+        storage = init_storage(
+            endpoint_url=settings.storage.endpoint_url,
+            access_key=settings.storage.access_key,
+            secret_key=settings.storage.secret_key,
+            bucket=settings.storage.bucket,
+        )
+        await storage.ensure_bucket()
         yield
     shutdown_observability()
 
