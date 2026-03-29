@@ -4,10 +4,21 @@ from typing import Any
 from unittest.mock import AsyncMock, patch
 from uuid import uuid4
 
+import pytest
+from arq.connections import RedisSettings
 from PIL import Image
 
 from app.core.enums import MediaContext, MediaKind, MediaOwnerType, MediaStatus
 from app.media.models import Media
+from app.media.worker import (
+    WorkerSettings,
+    _get_variant_specs,
+    _process_document,
+    _process_photo,
+    _process_video,
+    cleanup_orphans_cron,
+    process_media_job,
+)
 from app.users.models import User
 
 
@@ -55,8 +66,6 @@ async def _create_media(
 
 
 async def test_get_variant_specs_photo_user_profile() -> None:
-    from app.media.worker import _get_variant_specs
-
     user = await _create_user("WRKR01", "worker01@example.com")
     media = await _create_media(user, kind=MediaKind.PHOTO, context=MediaContext.USER_PROFILE)
 
@@ -69,8 +78,6 @@ async def test_get_variant_specs_photo_user_profile() -> None:
 
 
 async def test_get_variant_specs_photo_listing() -> None:
-    from app.media.worker import _get_variant_specs
-
     user = await _create_user("WRKR02", "worker02@example.com")
     media = await _create_media(user, kind=MediaKind.PHOTO, context=MediaContext.LISTING)
 
@@ -84,8 +91,6 @@ async def test_get_variant_specs_photo_listing() -> None:
 
 
 async def test_get_variant_specs_video_listing() -> None:
-    from app.media.worker import _get_variant_specs
-
     user = await _create_user("WRKR03", "worker03@example.com")
     media = await _create_media(user, kind=MediaKind.VIDEO, context=MediaContext.LISTING)
 
@@ -98,8 +103,6 @@ async def test_get_variant_specs_video_listing() -> None:
 
 
 async def test_get_variant_specs_document() -> None:
-    from app.media.worker import _get_variant_specs
-
     user = await _create_user("WRKR04", "worker04@example.com")
     media = await _create_media(user, kind=MediaKind.DOCUMENT, context=MediaContext.LISTING)
 
@@ -112,8 +115,6 @@ async def test_get_variant_specs_document() -> None:
 
 
 async def test_process_media_job_photo() -> None:
-    from app.media.worker import process_media_job
-
     user = await _create_user("WRKR05", "worker05@example.com")
     media = await _create_media(
         user,
@@ -139,8 +140,6 @@ async def test_process_media_job_photo() -> None:
 
 
 async def test_process_media_job_document() -> None:
-    from app.media.worker import process_media_job
-
     user = await _create_user("WRKR06", "worker06@example.com")
     media = await _create_media(
         user,
@@ -163,18 +162,12 @@ async def test_process_media_job_document() -> None:
 
 
 async def test_process_media_job_not_found() -> None:
-    from app.media.worker import process_media_job
-
     random_id = str(uuid4())
     # Should not raise any error
     await process_media_job({}, random_id)
 
 
 async def test_process_media_job_failure() -> None:
-    import pytest
-
-    from app.media.worker import process_media_job
-
     user = await _create_user("WRKR07", "worker07@example.com")
     media = await _create_media(user, kind=MediaKind.PHOTO, context=MediaContext.USER_PROFILE)
 
@@ -193,8 +186,6 @@ async def test_process_media_job_failure() -> None:
 
 
 async def test_process_photo_orchestration() -> None:
-    from app.media.worker import _process_photo
-
     user = await _create_user("WRKR08", "worker08@example.com")
     media = await _create_media(user, kind=MediaKind.PHOTO, context=MediaContext.USER_PROFILE)
 
@@ -220,8 +211,6 @@ async def test_process_photo_orchestration() -> None:
 
 
 async def test_process_video_orchestration() -> None:
-    from app.media.worker import _process_video
-
     user = await _create_user("WRKR09", "worker09@example.com")
     media = await _create_media(
         user,
@@ -250,8 +239,6 @@ async def test_process_video_orchestration() -> None:
 
 
 async def test_process_document_orchestration() -> None:
-    from app.media.worker import _process_document
-
     user = await _create_user("WRKR10", "worker10@example.com")
     media = await _create_media(
         user,
@@ -280,8 +267,6 @@ async def test_process_document_orchestration() -> None:
 
 
 async def test_cleanup_orphans_cron() -> None:
-    from app.media.worker import cleanup_orphans_cron
-
     user = await _create_user("WRKR11", "worker11@example.com")
 
     # Create an old orphan
@@ -321,8 +306,4 @@ async def test_cleanup_orphans_cron() -> None:
 
 
 async def test_worker_settings_redis_settings() -> None:
-    from arq.connections import RedisSettings
-
-    from app.media.worker import WorkerSettings
-
     assert isinstance(WorkerSettings.redis_settings, RedisSettings)

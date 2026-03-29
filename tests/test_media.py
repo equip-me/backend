@@ -6,8 +6,11 @@ from uuid import UUID, uuid4
 import pytest
 from httpx import AsyncClient
 
+import app.media.storage as storage_mod
+from app.core.config import get_settings
 from app.core.enums import MediaContext, MediaKind, MediaOwnerType, MediaStatus
 from app.media.models import Media
+from app.media.service import cleanup_orphaned_media
 from app.media.storage import StorageClient
 from app.users.models import User
 
@@ -38,8 +41,6 @@ async def test_create_media_record(create_user: Any) -> None:
 
 
 async def test_media_owner_assignment() -> None:
-    from app.core.enums import MediaOwnerType
-
     user = await User.create(
         id="TSTU01",
         email="media-test@example.com",
@@ -74,8 +75,6 @@ async def test_media_owner_assignment() -> None:
 
 @pytest.fixture
 async def storage() -> StorageClient:
-    from app.core.config import get_settings
-
     settings = get_settings()
     client = StorageClient(
         endpoint_url=settings.storage.endpoint_url,
@@ -325,12 +324,7 @@ async def test_retry_failed_media(client: AsyncClient, create_user: Any, mock_st
     )
     media_id = resp.json()["media_id"]
 
-    from uuid import UUID
-
-    from app.core.enums import MediaStatus
-    from app.media.models import Media as MediaModel
-
-    await MediaModel.filter(id=UUID(media_id)).update(status=MediaStatus.FAILED)
+    await Media.filter(id=UUID(media_id)).update(status=MediaStatus.FAILED)
 
     retry_resp = await client.post(
         f"/media/{media_id}/retry",
@@ -660,8 +654,6 @@ async def test_delete_listing_cleans_up_media(
 
 
 async def test_orphan_cleanup_deletes_old_unattached() -> None:
-    from app.media.service import cleanup_orphaned_media
-
     mock_st = AsyncMock()
 
     user = await User.create(
@@ -709,8 +701,6 @@ async def test_orphan_cleanup_deletes_old_unattached() -> None:
 
 
 async def test_orphan_cleanup_skips_attached() -> None:
-    from app.media.service import cleanup_orphaned_media
-
     mock_st = AsyncMock()
 
     user = await User.create(
@@ -1212,8 +1202,6 @@ async def test_get_listing_media_with_documents(
 
 
 async def test_orphan_cleanup_skips_failed() -> None:
-    from app.media.service import cleanup_orphaned_media
-
     mock_st = AsyncMock()
 
     user = await User.create(
@@ -1250,10 +1238,6 @@ async def test_orphan_cleanup_skips_failed() -> None:
 
 
 def test_get_storage_before_init_raises() -> None:
-    import pytest
-
-    import app.media.storage as storage_mod
-
     original = storage_mod._instance
     storage_mod._instance = None
     try:
@@ -1264,8 +1248,6 @@ def test_get_storage_before_init_raises() -> None:
 
 
 def test_init_storage_and_get_storage() -> None:
-    import app.media.storage as storage_mod
-
     original = storage_mod._instance
     try:
         storage_mod._instance = None

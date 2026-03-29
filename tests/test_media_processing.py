@@ -1,6 +1,12 @@
 import io
+from pathlib import Path
+from unittest.mock import AsyncMock, patch
 
+import pytest
 from PIL import Image
+from PIL.ExifTags import Base as ExifBase
+
+from app.media.processing import build_video_command, process_document, process_photo, process_video
 
 
 def _create_test_image(width: int = 2000, height: int = 1500, fmt: str = "JPEG") -> bytes:
@@ -11,8 +17,6 @@ def _create_test_image(width: int = 2000, height: int = 1500, fmt: str = "JPEG")
 
 
 async def test_process_photo_creates_variants() -> None:
-    from app.media.processing import process_photo
-
     original = _create_test_image(2000, 1500)
     variant_specs: list[dict[str, int | str]] = [
         {"name": "large", "max_width": 1200, "quality": 85},
@@ -32,8 +36,6 @@ async def test_process_photo_creates_variants() -> None:
 
 
 async def test_process_photo_does_not_upscale() -> None:
-    from app.media.processing import process_photo
-
     original = _create_test_image(100, 75)
     variant_specs: list[dict[str, int | str]] = [
         {"name": "large", "max_width": 1200, "quality": 85},
@@ -48,11 +50,7 @@ async def test_process_photo_does_not_upscale() -> None:
 
 
 async def test_process_photo_strips_exif() -> None:
-    from app.media.processing import process_photo
-
     img = Image.new("RGB", (800, 600), color="blue")
-    from PIL.ExifTags import Base as ExifBase
-
     exif_data = img.getexif()
     exif_data[ExifBase.Make] = "TestCamera"
     buf = io.BytesIO()
@@ -67,8 +65,6 @@ async def test_process_photo_strips_exif() -> None:
 
 
 async def test_build_video_full_command() -> None:
-    from app.media.processing import build_video_command
-
     cmd = build_video_command(
         input_path="/tmp/input.mp4",
         output_path="/tmp/output.webm",
@@ -85,8 +81,6 @@ async def test_build_video_full_command() -> None:
 
 
 async def test_build_video_preview_command() -> None:
-    from app.media.processing import build_video_command
-
     cmd = build_video_command(
         input_path="/tmp/input.mp4",
         output_path="/tmp/preview.webm",
@@ -101,8 +95,6 @@ async def test_build_video_preview_command() -> None:
 
 
 async def test_document_processing_is_passthrough() -> None:
-    from app.media.processing import process_document
-
     original = b"%PDF-1.4 fake pdf content"
     result = process_document(original)
     assert result == original
@@ -126,8 +118,6 @@ def _create_palette_image(width: int = 400, height: int = 300) -> bytes:
 
 
 async def test_process_photo_rgba_conversion() -> None:
-    from app.media.processing import process_photo
-
     original = _create_rgba_image()
     variant_specs: list[dict[str, int | str]] = [
         {"name": "medium", "max_width": 600, "quality": 80},
@@ -141,8 +131,6 @@ async def test_process_photo_rgba_conversion() -> None:
 
 
 async def test_process_photo_palette_mode() -> None:
-    from app.media.processing import process_photo
-
     original = _create_palette_image()
     variant_specs: list[dict[str, int | str]] = [
         {"name": "small", "max_width": 200, "quality": 75},
@@ -160,16 +148,10 @@ async def test_process_photo_palette_mode() -> None:
 
 def _write_fake_output(path: str, data: bytes) -> None:
     """Write fake ffmpeg output (sync helper to avoid ASYNC240 lint)."""
-    from pathlib import Path
-
     Path(path).write_bytes(data)
 
 
 async def test_process_video_calls_ffmpeg() -> None:
-    from unittest.mock import AsyncMock, patch
-
-    from app.media.processing import process_video
-
     variant_specs: list[dict[str, int | str | bool]] = [
         {"name": "full", "max_height": 720, "video_bitrate": "1.5M", "audio": True},
     ]
@@ -191,10 +173,6 @@ async def test_process_video_calls_ffmpeg() -> None:
 
 
 async def test_process_video_multiple_variants() -> None:
-    from unittest.mock import AsyncMock, patch
-
-    from app.media.processing import process_video
-
     variant_specs: list[dict[str, int | str | bool]] = [
         {"name": "full", "max_height": 720, "video_bitrate": "1.5M", "audio": True},
         {"name": "preview", "max_height": 480, "video_bitrate": "500k", "audio": False, "max_duration_seconds": 10},
@@ -216,12 +194,6 @@ async def test_process_video_multiple_variants() -> None:
 
 
 async def test_process_video_ffmpeg_failure() -> None:
-    from unittest.mock import AsyncMock, patch
-
-    import pytest
-
-    from app.media.processing import process_video
-
     variant_specs: list[dict[str, int | str | bool]] = [
         {"name": "full", "max_height": 720, "video_bitrate": "1.5M", "audio": True},
     ]
