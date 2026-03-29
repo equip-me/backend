@@ -1,7 +1,9 @@
 from typing import Any
+from unittest.mock import AsyncMock
 from uuid import uuid4
 
 import pytest
+from httpx import AsyncClient
 
 from app.core.enums import MediaContext, MediaKind, MediaStatus
 from app.media.models import Media
@@ -126,3 +128,77 @@ async def test_storage_delete_prefix(storage: StorageClient) -> None:
     assert await storage.exists("test/other/c.txt")
 
     await storage.delete("test/other/c.txt")
+
+
+async def test_request_upload_url(client: AsyncClient, create_user: Any, mock_storage: AsyncMock) -> None:  # noqa: ARG001
+    _, token = await create_user()
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "avatar.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 1_000_000,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert "media_id" in data
+    assert "upload_url" in data
+    assert "expires_in" in data
+
+
+async def test_upload_url_rejects_invalid_content_type(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,  # noqa: ARG001
+) -> None:
+    _, token = await create_user()
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "malware.exe",
+            "content_type": "application/x-msdownload",
+            "file_size": 1024,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_upload_url_rejects_oversized_file(
+    client: AsyncClient,
+    create_user: Any,
+    mock_storage: AsyncMock,  # noqa: ARG001
+) -> None:
+    _, token = await create_user()
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "huge.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 100_000_000,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 400
+
+
+async def test_upload_url_requires_auth(client: AsyncClient, mock_storage: AsyncMock) -> None:  # noqa: ARG001
+    resp = await client.post(
+        "/media/upload-url",
+        json={
+            "kind": "photo",
+            "context": "user_profile",
+            "filename": "avatar.jpg",
+            "content_type": "image/jpeg",
+            "file_size": 1024,
+        },
+    )
+    assert resp.status_code == 401

@@ -12,6 +12,7 @@ from app.core.database import get_tortoise_config
 from app.core.exceptions import AppError, app_error_handler
 from app.listings.models import ListingCategory
 from app.listings.router import router as listings_router
+from app.media.router import router as media_router
 from app.media.storage import init_storage
 from app.observability import instrument_app, setup_observability, shutdown_observability
 from app.observability.middleware import TraceIDMiddleware
@@ -82,6 +83,7 @@ def create_app() -> FastAPI:
     application.include_router(organizations_router)
     application.include_router(listings_router)
     application.include_router(orders_router)
+    application.include_router(media_router)
 
     return application
 

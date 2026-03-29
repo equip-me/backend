@@ -1,6 +1,6 @@
 from collections.abc import AsyncGenerator, Generator
 from typing import Any
-from unittest.mock import MagicMock
+from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
@@ -11,6 +11,7 @@ from app.core.database import get_tortoise_config
 from app.core.enums import OrganizationStatus, UserRole
 from app.listings.models import ListingCategory
 from app.main import app
+from app.media.storage import get_storage
 from app.organizations.dependencies import get_dadata_client
 from app.organizations.models import Organization
 from app.users.models import User
@@ -240,3 +241,14 @@ async def renter_token(create_user: Any) -> str:
         surname="Testov",
     )
     return str(token)
+
+
+@pytest.fixture
+def mock_storage() -> Generator[AsyncMock]:
+    mock = AsyncMock()
+    mock.generate_upload_url.return_value = "https://minio:9000/bucket/pending/test/file?X-Amz-Signature=abc"
+    mock.generate_download_url.return_value = "https://minio:9000/bucket/media/test/file?X-Amz-Signature=abc"
+    mock.exists.return_value = True
+    app.dependency_overrides[get_storage] = lambda: mock
+    yield mock
+    app.dependency_overrides.pop(get_storage, None)
