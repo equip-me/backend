@@ -161,12 +161,11 @@ if __name__ == "__main__":
     import asyncio
 
     from arq.typing import WorkerSettingsBase
-    from arq.worker import create_worker, get_kwargs
+    from arq.worker import create_worker
 
     async def _main() -> None:
         cls = cast("type[WorkerSettingsBase]", WorkerSettings)
-        kwargs: dict[str, Any] = get_kwargs(cls)
-        worker = create_worker(**kwargs)
+        worker = create_worker(cls)
         await worker.main()
 
     asyncio.run(_main())
