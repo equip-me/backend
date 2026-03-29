@@ -4,7 +4,14 @@ from app.core.config import get_settings
 from app.core.enums import MediaKind, MediaOwnerType, MediaStatus
 from app.core.exceptions import AppValidationError, NotFoundError, PermissionDeniedError
 from app.media.models import Media
-from app.media.schemas import ProfilePhotoRead, UploadUrlRequest, UploadUrlResponse
+from app.media.schemas import (
+    MediaDocumentRead,
+    MediaPhotoRead,
+    MediaVideoRead,
+    ProfilePhotoRead,
+    UploadUrlRequest,
+    UploadUrlResponse,
+)
 from app.media.storage import StorageClient
 from app.observability.tracing import traced
 from app.users.models import User
@@ -177,3 +184,124 @@ async def attach_profile_photo(
     media.owner_type = owner_type
     media.owner_id = owner_id
     await media.save()
+
+
+@traced
+async def attach_listing_media(
+    listing_id: str,
+    photo_ids: list[UUID],
+    video_ids: list[UUID],
+    document_ids: list[UUID],
+    user: User,
+    storage: StorageClient,
+) -> None:
+    """Attach media to a listing. Detaches all current media first (removed ones become orphans)."""
+    _ = storage, user  # reserved for future use
+    settings = get_settings()
+
+    if len(photo_ids) > settings.media.listing_limits_max_photos:
+        raise AppValidationError(f"Maximum {settings.media.listing_limits_max_photos} photos allowed")
+    if len(video_ids) > settings.media.listing_limits_max_videos:
+        raise AppValidationError(f"Maximum {settings.media.listing_limits_max_videos} videos allowed")
+    if len(document_ids) > settings.media.listing_limits_max_documents:
+        raise AppValidationError(f"Maximum {settings.media.listing_limits_max_documents} documents allowed")
+
+    # Detach all current media from this listing
+    await Media.filter(
+        owner_type=MediaOwnerType.LISTING,
+        owner_id=listing_id,
+    ).update(owner_type=None, owner_id=None)
+
+    # Attach new media with position ordering
+    all_ids_with_kind: list[tuple[UUID, MediaKind]] = [
+        *[(pid, MediaKind.PHOTO) for pid in photo_ids],
+        *[(vid, MediaKind.VIDEO) for vid in video_ids],
+        *[(did, MediaKind.DOCUMENT) for did in document_ids],
+    ]
+    for position, (media_id, expected_kind) in enumerate(all_ids_with_kind):
+        media = await Media.get_or_none(id=media_id)
+        if media is None:
+            raise NotFoundError(f"Media {media_id} not found")
+        if media.status != MediaStatus.READY:
+            raise AppValidationError(f"Media {media_id} is not ready")
+        if media.kind != expected_kind:
+            raise AppValidationError(f"Media {media_id} is {media.kind.value}, expected {expected_kind.value}")
+
+        media.owner_type = MediaOwnerType.LISTING
+        media.owner_id = listing_id
+        media.position = position
+        await media.save()
+
+
+@traced
+async def get_listing_media(
+    listing_id: str,
+    storage: StorageClient,
+) -> tuple[list[MediaPhotoRead], list[MediaVideoRead], list[MediaDocumentRead]]:
+    """Get all media for a listing with presigned download URLs."""
+    settings = get_settings()
+    expires = settings.storage.presigned_url_expiry_seconds
+
+    media_list = await Media.filter(
+        owner_type=MediaOwnerType.LISTING,
+        owner_id=listing_id,
+        status=MediaStatus.READY,
+    ).order_by("position", "-created_at")
+
+    photos: list[MediaPhotoRead] = []
+    videos: list[MediaVideoRead] = []
+    documents: list[MediaDocumentRead] = []
+
+    for m in media_list:
+        if m.kind == MediaKind.PHOTO:
+            photos.append(
+                MediaPhotoRead(
+                    id=m.id,
+                    large_url=(
+                        await storage.generate_download_url(m.variants["large"], expires)
+                        if "large" in m.variants
+                        else None
+                    ),
+                    medium_url=(
+                        await storage.generate_download_url(m.variants["medium"], expires)
+                        if "medium" in m.variants
+                        else None
+                    ),
+                    small_url=(
+                        await storage.generate_download_url(m.variants["small"], expires)
+                        if "small" in m.variants
+                        else None
+                    ),
+                    position=m.position,
+                )
+            )
+        elif m.kind == MediaKind.VIDEO:
+            videos.append(
+                MediaVideoRead(
+                    id=m.id,
+                    full_url=(
+                        await storage.generate_download_url(m.variants["full"], expires)
+                        if "full" in m.variants
+                        else None
+                    ),
+                    preview_url=(
+                        await storage.generate_download_url(m.variants["preview"], expires)
+                        if "preview" in m.variants
+                        else None
+                    ),
+                    position=m.position,
+                )
+            )
+        elif m.kind == MediaKind.DOCUMENT:
+            original_key = m.variants.get("original", "")
+            documents.append(
+                MediaDocumentRead(
+                    id=m.id,
+                    url=await storage.generate_download_url(original_key, expires) if original_key else "",
+                    filename=m.original_filename,
+                    file_size=m.file_size,
+                    position=m.position,
+                )
+            )
+
+    return photos, videos, documents

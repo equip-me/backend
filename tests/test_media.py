@@ -454,3 +454,162 @@ async def test_update_org_photo(client: AsyncClient, create_organization: Any) -
     assert resp.status_code == 200
     assert resp.json()["photo"] is not None
     assert "medium_url" in resp.json()["photo"]
+
+
+# ── Listing media tests ────────────────────────────────
+
+
+async def test_create_listing_with_media(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+
+    photo_id = await _create_ready_photo(user_id, "listing")
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Excavator with photos",
+            "category_id": category_id,
+            "price": 5000.00,
+            "photo_ids": [str(photo_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert resp.status_code == 201
+    data = resp.json()
+    assert len(data["photos"]) == 1
+    assert "medium_url" in data["photos"][0]
+
+
+async def test_listing_detail_includes_all_photo_variants(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+
+    # Create photo with listing variants (large+medium+small)
+    user = await User.get(id=user_id)
+    media_id = uuid4()
+    await Media.create(
+        id=media_id,
+        uploaded_by=user,
+        kind=MediaKind.PHOTO,
+        context=MediaContext.LISTING,
+        status=MediaStatus.READY,
+        original_filename="listing.jpg",
+        content_type="image/jpeg",
+        file_size=1024,
+        upload_key=f"pending/{media_id}/listing.jpg",
+        variants={
+            "large": f"media/{media_id}/large.webp",
+            "medium": f"media/{media_id}/medium.webp",
+            "small": f"media/{media_id}/small.webp",
+        },
+    )
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Excavator detail test",
+            "category_id": category_id,
+            "price": 5000.00,
+            "photo_ids": [str(media_id)],
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+
+    listing_id = resp.json()["id"]
+    detail = await client.get(f"/listings/{listing_id}")
+    assert detail.status_code == 200
+    photos = detail.json()["photos"]
+    assert len(photos) == 1
+    assert photos[0]["large_url"] is not None
+    assert photos[0]["medium_url"] is not None
+    assert photos[0]["small_url"] is not None
+
+
+async def test_update_listing_media(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_id = user_resp.json()["id"]
+
+    # Create listing without media
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Excavator update media test",
+            "category_id": category_id,
+            "price": 5000.00,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    listing_id = resp.json()["id"]
+    assert len(resp.json()["photos"]) == 0
+
+    # Add a photo via update
+    photo_id = await _create_ready_photo(user_id, "listing")
+    patch_resp = await client.patch(
+        f"/organizations/{org_id}/listings/{listing_id}",
+        json={"photo_ids": [str(photo_id)]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_resp.status_code == 200
+    assert len(patch_resp.json()["photos"]) == 1
+
+    # Remove all photos via update
+    patch_resp2 = await client.patch(
+        f"/organizations/{org_id}/listings/{listing_id}",
+        json={"photo_ids": []},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert patch_resp2.status_code == 200
+    assert len(patch_resp2.json()["photos"]) == 0
+
+
+async def test_listing_without_media_returns_empty_arrays(
+    client: AsyncClient,
+    verified_org: tuple[dict[str, str], str],
+    seed_categories: list[Any],
+) -> None:
+    org_data, token = verified_org
+    org_id = org_data["id"]
+    category_id = seed_categories[0].id
+
+    resp = await client.post(
+        f"/organizations/{org_id}/listings/",
+        json={
+            "name": "Excavator no media",
+            "category_id": category_id,
+            "price": 5000.00,
+        },
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 201
+    data = resp.json()
+    assert data["photos"] == []
+    assert data["videos"] == []
+    assert data["documents"] == []

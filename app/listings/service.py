@@ -12,6 +12,8 @@ from app.listings.schemas import (
     ListingRead,
     ListingUpdate,
 )
+from app.media import service as media_service
+from app.media.storage import StorageClient
 from app.observability.events import emit_event
 from app.observability.tracing import traced
 from app.organizations.models import Organization
@@ -31,6 +33,16 @@ def _category_to_read(category: ListingCategory) -> ListingCategoryRead:
         created_at=category.created_at,
         listing_count=getattr(category, "listing_count", 0),
     )
+
+
+async def _listing_to_read(listing: Listing, storage: StorageClient) -> ListingRead:
+    """Build ListingRead with media arrays from storage."""
+    photos, videos, documents = await media_service.get_listing_media(listing.id, storage)
+    read = ListingRead.model_validate(listing)
+    read.photos = photos
+    read.videos = videos
+    read.documents = documents
+    return read
 
 
 @traced
@@ -82,7 +94,7 @@ async def _validate_category(category_id: str, org: Organization) -> ListingCate
 
 
 @traced
-async def create_listing(org: Organization, user: User, data: ListingCreate) -> ListingRead:
+async def create_listing(org: Organization, user: User, data: ListingCreate, storage: StorageClient) -> ListingRead:
     category = await _validate_category(data.category_id, org)
     listing = await create_with_short_id(
         Listing,
@@ -100,13 +112,33 @@ async def create_listing(org: Organization, user: User, data: ListingCreate) -> 
         setup=data.setup,
     )
     await listing.fetch_related("category")
+
+    if data.photo_ids or data.video_ids or data.document_ids:
+        await media_service.attach_listing_media(
+            listing.id,
+            data.photo_ids,
+            data.video_ids,
+            data.document_ids,
+            user,
+            storage,
+        )
+
     emit_event("listing.created", listing_id=listing.id, org_id=org.id)
-    return ListingRead.model_validate(listing)
+    return await _listing_to_read(listing, storage)
 
 
 @traced
-async def update_listing(listing: Listing, org: Organization, data: ListingUpdate) -> ListingRead:
+async def update_listing(
+    listing: Listing, org: Organization, data: ListingUpdate, user: User, storage: StorageClient
+) -> ListingRead:
     update_data = data.model_dump(exclude_unset=True)
+
+    # Extract media fields before applying ORM updates
+    has_media_update = "photo_ids" in update_data or "video_ids" in update_data or "document_ids" in update_data
+    update_data.pop("photo_ids", None)
+    update_data.pop("video_ids", None)
+    update_data.pop("document_ids", None)
+
     if "category_id" in update_data:
         category = await _validate_category(update_data.pop("category_id"), org)
         listing.category = category
@@ -114,7 +146,18 @@ async def update_listing(listing: Listing, org: Organization, data: ListingUpdat
         setattr(listing, field, value)
     await listing.save()
     await listing.fetch_related("category")
-    return ListingRead.model_validate(listing)
+
+    if has_media_update:
+        await media_service.attach_listing_media(
+            listing.id,
+            data.photo_ids if data.photo_ids is not None else [],
+            data.video_ids if data.video_ids is not None else [],
+            data.document_ids if data.document_ids is not None else [],
+            user,
+            storage,
+        )
+
+    return await _listing_to_read(listing, storage)
 
 
 @traced
@@ -123,23 +166,24 @@ async def delete_listing(listing: Listing) -> None:
 
 
 @traced
-async def change_listing_status(listing: Listing, status: ListingStatus) -> ListingRead:
+async def change_listing_status(listing: Listing, status: ListingStatus, storage: StorageClient) -> ListingRead:
     old_status = listing.status
     listing.status = status
     await listing.save()
     await listing.fetch_related("category")
     emit_event("listing.status_changed", listing_id=listing.id, old_status=old_status.value, new_status=status.value)
-    return ListingRead.model_validate(listing)
+    return await _listing_to_read(listing, storage)
 
 
 @traced
-async def list_org_listings(org_id: str) -> list[ListingRead]:
+async def list_org_listings(org_id: str, storage: StorageClient) -> list[ListingRead]:
     listings = await Listing.filter(organization_id=org_id).prefetch_related("category").order_by("-updated_at")
-    return [ListingRead.model_validate(listing) for listing in listings]
+    return [await _listing_to_read(listing, storage) for listing in listings]
 
 
 @traced
 async def list_public_listings(
+    storage: StorageClient,
     category_id: str | None = None,
     organization_id: str | None = None,
 ) -> list[ListingRead]:
@@ -152,7 +196,12 @@ async def list_public_listings(
     if organization_id is not None:
         qs = qs.filter(organization_id=organization_id)
     listings = await qs.prefetch_related("category").order_by("-updated_at")
-    return [ListingRead.model_validate(listing) for listing in listings]
+    return [await _listing_to_read(listing, storage) for listing in listings]
+
+
+@traced
+async def get_listing_read(listing: Listing, storage: StorageClient) -> ListingRead:
+    return await _listing_to_read(listing, storage)
 
 
 @traced
