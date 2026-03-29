@@ -11,7 +11,8 @@ This document describes the complete business logic of the rental platform. It i
 3. [Organizations](#3-organizations)
 4. [Listing Catalog](#4-listing-catalog)
 5. [Order Lifecycle](#5-order-lifecycle)
-6. [Data Model Reference](#6-data-model-reference)
+6. [Media & File Uploads](#6-media--file-uploads)
+7. [Data Model Reference](#7-data-model-reference)
 
 ---
 
@@ -540,9 +541,134 @@ Each order should have a dedicated chat room between the renter and the organiza
 
 ---
 
-## 6. Data Model Reference
+## 6. Media & File Uploads
 
-### 6.1 Entity Relationships
+### 6.1 Media Entity
+
+Each uploaded file is tracked as a `Media` record.
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| id | UUID | PK | |
+| kind | enum MediaKind | required | File type category |
+| context | enum MediaContext | required | Purpose / usage context |
+| status | enum MediaStatus | default: `pending_upload` | Processing lifecycle state |
+| owner_type | string | required | Entity type that owns this file (e.g. `user`, `organization`, `listing`) |
+| owner_id | string | required | ID of the owning entity |
+| s3_key | string | required | S3 object key for the original upload |
+| uploaded_by | FK → User | required | User who initiated the upload |
+| created_at | datetime | auto | |
+| updated_at | datetime | auto-updated | |
+
+#### MediaKind
+| Value | Description |
+|-------|-------------|
+| `photo` | Image file |
+| `video` | Video file |
+| `document` | Document file (PDF, etc.) |
+
+#### MediaContext
+| Value | Description |
+|-------|-------------|
+| `user_profile` | User profile photo |
+| `org_profile` | Organization profile photo |
+| `listing` | Listing photo, video, or document |
+
+#### MediaStatus
+| Value | Description |
+|-------|-------------|
+| `pending_upload` | Presigned URL issued; waiting for S3 upload |
+| `processing` | Upload confirmed; ARQ worker is transcoding/resizing |
+| `ready` | Processing complete; file(s) available |
+| `failed` | Processing failed; kept for inspection, not auto-deleted |
+
+**Status state machine:**
+
+```
+pending_upload
+  └──[POST /media/{id}/confirm]──► processing
+                                      ├──[worker success]──► ready
+                                      └──[worker failure]──► failed
+                                                               └──[POST /media/{id}/retry]──► processing
+```
+
+### 6.2 Upload Flow
+
+1. Client calls `POST /media/upload-url` with `kind`, `context`, and `owner_id`. Server creates a `Media` record (`status: pending_upload`) and returns a presigned S3 PUT URL.
+2. Client uploads the file directly to S3 using the presigned URL (no server proxy).
+3. Client calls `POST /media/{id}/confirm`. Server transitions status to `processing` and enqueues an ARQ background job.
+4. ARQ worker processes the file (transcode/resize), stores output variants in S3, and transitions status to `ready` or `failed`.
+5. Client polls `GET /media/{id}/status` until `ready` or `failed`.
+
+### 6.3 Processing Rules
+
+#### Photos
+Output format: **WebP**.
+
+| Context | Variants produced |
+|---------|-------------------|
+| `user_profile` | `medium` (400×400), `small` (100×100) |
+| `org_profile` | `medium` (400×400), `small` (100×100) |
+| `listing` | `large` (1200×900), `medium` (600×450), `small` (300×225) |
+
+#### Videos
+Output format: **WebM** (VP9 video + Opus audio).
+
+| Variant | Resolution | Duration | Audio |
+|---------|------------|----------|-------|
+| `full` | 720p | full | yes |
+| `preview` | 480p | first 10 s | no |
+
+#### Documents
+Stored as-is. No server-side processing; the original S3 object is the deliverable.
+
+### 6.4 Entity Media Associations
+
+| Entity | Allowed kinds | Cardinality |
+|--------|--------------|-------------|
+| User | photo | 0–1 profile photo |
+| Organization | photo | 0–1 profile photo |
+| Listing | photo, video, document | multiple (configurable limits per kind) |
+
+Setting a new profile photo for a User or Organization replaces the existing one; the old `Media` record and its S3 objects are deleted.
+
+### 6.5 Cleanup
+
+| Trigger | Scope | Behavior |
+|---------|-------|---------|
+| Entity deleted | All attached `Media` records | Immediate deletion: S3 objects and DB records removed synchronously |
+| Orphan sweep (hourly cron) | `status: pending_upload`, `owner_id` not attached to any entity, `created_at` older than TTL (default 24 h) | Deleted by background job |
+| Failed media | `status: failed` | **Not** auto-deleted; retained for manual inspection |
+
+### 6.6 Permissions
+
+| Action | Required permission |
+|--------|-------------------|
+| Request presigned upload URL | Authenticated |
+| Confirm upload | Uploader only |
+| Get status | Uploader only |
+| Delete media | Uploader only |
+| Retry failed processing | Uploader only |
+| Attach to User profile | Uploader = the user themselves |
+| Attach to Organization profile | Uploader + Org Admin of that organization |
+| Attach to Listing | Uploader + Org Editor of the listing's organization |
+
+### 6.7 Media API Summary
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| POST | `/media/upload-url` | Authenticated | Request presigned S3 PUT URL; creates Media record |
+| POST | `/media/{id}/confirm` | Uploader | Confirm upload complete; trigger processing |
+| GET | `/media/{id}/status` | Uploader | Poll processing status |
+| DELETE | `/media/{id}` | Uploader | Delete media record and S3 objects |
+| POST | `/media/{id}/retry` | Uploader | Re-enqueue processing for a failed media |
+| PATCH | `/organizations/{id}/photo` | Org Admin | Attach a ready photo as the organization's profile photo |
+
+---
+
+## 7. Data Model Reference
+
+### 7.1 Entity Relationships
 
 ```
 Organization (PK: id)
@@ -583,9 +709,13 @@ Order (PK: id)
   ├── FK ── Listing
   ├── FK ── Organization
   └── FK ── User (requester)
+
+Media (PK: id)
+  └── FK ── User (uploaded_by)
+  Polymorphic: (owner_type, owner_id) → User | Organization | Listing
 ```
 
-### 6.2 All Enums
+### 7.2 All Enums
 
 #### UserRole
 | Value | Description |
@@ -647,3 +777,25 @@ Order (PK: id)
 | `cancel_by_org` | Organization | Cancel a confirmed or active order |
 | `activate` | System | Rental period starts (lazy eval / Temporal) |
 | `finish` | System | Rental period ends (lazy eval / Temporal) |
+
+#### MediaKind
+| Value | Description |
+|-------|-------------|
+| `photo` | Image file |
+| `video` | Video file |
+| `document` | Document file (PDF, etc.) |
+
+#### MediaContext
+| Value | Description |
+|-------|-------------|
+| `user_profile` | User profile photo |
+| `org_profile` | Organization profile photo |
+| `listing` | Listing photo, video, or document |
+
+#### MediaStatus
+| Value | Description |
+|-------|-------------|
+| `pending_upload` | Presigned URL issued; waiting for S3 upload |
+| `processing` | Upload confirmed; ARQ worker is transcoding/resizing |
+| `ready` | Processing complete; file(s) available |
+| `failed` | Processing failed; kept for inspection, not auto-deleted |
