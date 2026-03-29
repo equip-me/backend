@@ -64,3 +64,37 @@ async def test_process_photo_strips_exif() -> None:
     result_img = Image.open(io.BytesIO(results["medium"]))
     result_exif = result_img.getexif()
     assert ExifBase.Make not in result_exif
+
+
+async def test_build_video_full_command() -> None:
+    from app.media.processing import build_video_command
+
+    cmd = build_video_command(
+        input_path="/tmp/input.mp4",
+        output_path="/tmp/output.webm",
+        max_height=720,
+        video_bitrate="1.5M",
+        audio=True,
+        max_duration_seconds=None,
+    )
+    assert "-vf" in cmd
+    assert any("scale=" in c for c in cmd)
+    assert "-b:v" in cmd
+    assert "1.5M" in cmd
+    assert "-an" not in cmd
+
+
+async def test_build_video_preview_command() -> None:
+    from app.media.processing import build_video_command
+
+    cmd = build_video_command(
+        input_path="/tmp/input.mp4",
+        output_path="/tmp/preview.webm",
+        max_height=480,
+        video_bitrate="500k",
+        audio=False,
+        max_duration_seconds=10,
+    )
+    assert "-an" in cmd
+    assert "-t" in cmd
+    assert "10" in cmd

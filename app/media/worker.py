@@ -86,8 +86,20 @@ async def _process_photo(media: Media, storage: StorageClient) -> None:
 
 
 async def _process_video(media: Media, storage: StorageClient) -> None:
-    # Implemented in Task 8
-    pass
+    from app.media.processing import process_video
+
+    original_data = await storage.download(media.upload_key)
+    variant_specs = _get_variant_specs(media)
+    results = await process_video(original_data, variant_specs, media.original_filename)
+
+    variants: dict[str, str] = {}
+    for name, data in results.items():
+        key = f"media/{media.id}/{name}.webm"
+        await storage.upload(key, data, "video/webm")
+        variants[name] = key
+
+    media.variants = variants
+    await storage.delete(media.upload_key)
 
 
 async def _process_document(media: Media, storage: StorageClient) -> None:
