@@ -47,14 +47,10 @@ tasks:
 
   # ── Run ────────────────────────────────────────────────
   run:
-    desc: Start the dev server
+    desc: Start dev server + media worker (Ctrl+C stops both)
+    deps: [infra:up]
     cmds:
-      - poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 {{.CLI_ARGS}}
-
-  worker:
-    desc: Start the ARQ media worker
-    cmds:
-      - poetry run python -m app.media.worker {{.CLI_ARGS}}
+      - trap 'kill 0' EXIT; poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 & poetry run python -m app.media.worker & wait
 
   # ── Lint & Format ──────────────────────────────────────
   lint:
