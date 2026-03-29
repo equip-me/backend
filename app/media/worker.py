@@ -3,7 +3,7 @@ from datetime import UTC, datetime
 from typing import Any, ClassVar, cast
 from uuid import UUID
 
-from arq import create_pool, func, run_worker
+from arq import create_pool, func
 from arq.connections import ArqRedis, RedisSettings
 from arq.cron import cron
 from arq.typing import WorkerCoroutine
@@ -158,6 +158,15 @@ class WorkerSettings:
 
 
 if __name__ == "__main__":
-    from arq.typing import WorkerSettingsBase
+    import asyncio
 
-    run_worker(cast("type[WorkerSettingsBase]", WorkerSettings))
+    from arq.typing import WorkerSettingsBase
+    from arq.worker import create_worker, get_kwargs
+
+    async def _main() -> None:
+        cls = cast("type[WorkerSettingsBase]", WorkerSettings)
+        kwargs: dict[str, Any] = get_kwargs(cls)
+        worker = create_worker(**kwargs)
+        await worker.main()
+
+    asyncio.run(_main())
