@@ -130,6 +130,10 @@ All e2e tests run against real services from `docker-compose.test.yml`:
 **External API:**
 - **Dadata** — real API calls. Key from `.env` locally, GitHub secret `DADATA_API_KEY` in CI.
 
+### Implementation Principle: Fix the System, Not the Tests
+
+If during test implementation the system exhibits incorrect behavior (wrong error code, missing exception, misleading response, etc.), fix the application code so the test passes against correct behavior. Never adjust tests to match broken system behavior. Tests are the source of truth for what the spec says should happen.
+
 ### CI Configuration
 
 - Add `DADATA_API_KEY` as GitHub Actions secret
