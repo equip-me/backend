@@ -2,7 +2,6 @@ version: "3"
 
 vars:
   IMAGE_NAME: rental-platform
-  VERSION: dev
 
 tasks:
   # ── Setup ──────────────────────────────────────────────
@@ -105,19 +104,6 @@ tasks:
     desc: Apply pending migrations
     cmds:
       - poetry run tortoise migrate {{.CLI_ARGS}}
-
-  # ── Build & Deploy ─────────────────────────────────────
-  build:
-    desc: Build production Docker image (pass VERSION=x.y.z)
-    cmds:
-      - docker build -t {{.IMAGE_NAME}}:{{.VERSION}} --build-arg APP_VERSION={{.VERSION}} .
-      - docker tag {{.IMAGE_NAME}}:{{.VERSION}} {{.IMAGE_NAME}}:latest
-
-  deploy:
-    desc: Deploy to production (pass VERSION=x.y.z)
-    cmds:
-      - task: build
-      - docker compose -f docker-compose.prod.yml up -d
 
   # ── CI (all checks) ───────────────────────────────────
   ci:

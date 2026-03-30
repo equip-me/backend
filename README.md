@@ -2,6 +2,7 @@
 
 [![tests](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/coverage.yml/badge.svg)](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/coverage.yml)
 [![coverage](https://coveralls.io/repos/github/khamitovdr/equipment-sharing-backend-v2/badge.svg?branch=main)](https://coveralls.io/github/khamitovdr/equipment-sharing-backend-v2?branch=main)
+[![version](https://img.shields.io/badge/version-0.1.0-blue)](https://github.com/khamitovdr/equipment-sharing-backend-v2/pkgs/container/rental-platform)
 
 B2B/B2C marketplace for renting equipment and assets. Organizations list rentable items, users browse the catalog and place rental orders, and the platform manages the full order lifecycle from request through active rental to completion.
 
@@ -101,9 +102,6 @@ All commands use [go-task](https://taskfile.dev/). Run `task --list` to see all 
 | `task infra:up` | Start dev DB |
 | `task infra:down` | Stop dev DB |
 | `task infra:reset` | Stop dev DB + wipe volumes |
-| **Build & Deploy** | |
-| `task build VERSION=1.2.3` | Build tagged production Docker image |
-| `task deploy VERSION=1.2.3` | Build + deploy to production |
 | `task ci` | Full CI pipeline (lint + types + tests) |
 
 ## Configuration
@@ -166,14 +164,20 @@ Compose files:
 
 ### Production
 
-Full stack in Docker — PostgreSQL + app (gunicorn with uvicorn workers):
+Full stack in Docker — PostgreSQL + app (gunicorn with uvicorn workers).
+
+Releases are built and published via GitHub Actions (`release-minor` / `release-patch` workflows). Images are pushed to `ghcr.io` and pinned in `docker-compose.prod.yml` on the release branch.
+
+On the server:
 
 ```bash
-task build VERSION=1.2.3    # build image with version tag
-task deploy VERSION=1.2.3   # build + start production stack
+git checkout release/X.Y     # the release branch you want to deploy
+git pull
+docker compose -f docker-compose.prod.yml pull
+docker compose -f docker-compose.prod.yml up -d
 ```
 
-Uses `docker-compose.prod.yml`. Secrets are passed via environment variables to the container.
+Secrets are passed via environment variables to the container.
 
 ## API Overview
 

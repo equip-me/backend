@@ -1,0 +1,86 @@
+name: release-patch
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref_name, 'release/')
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Compute next patch version
+        id: version
+        run: |
+          CURRENT=$(grep -m1 '^version = ' pyproject.toml | sed 's/version = "\(.*\)"/\1/')
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "version=$NEW_VERSION" >> "$GITHUB_OUTPUT"
+          echo "major=$MAJOR" >> "$GITHUB_OUTPUT"
+          echo "minor=$MINOR" >> "$GITHUB_OUTPUT"
+          echo "Bumping $CURRENT → $NEW_VERSION"
+
+      - name: Configure git
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Bump version and tag
+        run: |
+          sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.version }}"/' pyproject.toml
+          git add pyproject.toml
+          git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
+          git tag "v${{ steps.version.outputs.version }}"
+
+      - name: Push branch and tag
+        run: |
+          git push origin "${{ github.ref_name }}"
+          git push origin "v${{ steps.version.outputs.version }}"
+
+      - name: Determine if latest minor
+        id: check_latest
+        run: |
+          CURRENT_MINOR="${{ steps.version.outputs.major }}.${{ steps.version.outputs.minor }}"
+          LATEST_MINOR=$(git branch -r --list 'origin/release/*' | sed 's|.*release/||' | sort -t. -k1,1n -k2,2n | tail -1)
+          IS_LATEST="false"
+          if [ "$CURRENT_MINOR" = "$LATEST_MINOR" ]; then
+            IS_LATEST="true"
+          fi
+          echo "is_latest=$IS_LATEST" >> "$GITHUB_OUTPUT"
+          echo "Current minor: $CURRENT_MINOR, latest minor: $LATEST_MINOR, is_latest: $IS_LATEST"
+
+      - name: Build, push, and create release
+        uses: ./.github/actions/publish-release
+        with:
+          version: ${{ steps.version.outputs.version }}
+          image_name: ghcr.io/${{ github.repository_owner }}/rental-platform
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          is_latest: ${{ steps.check_latest.outputs.is_latest }}
+
+      - name: Pin image in docker-compose.prod.yml
+        run: |
+          IMAGE="ghcr.io/${{ github.repository_owner }}/rental-platform:${{ steps.version.outputs.version }}"
+          sed -i "s|image: .*rental-platform.*|image: ${IMAGE}|" docker-compose.prod.yml
+          git add docker-compose.prod.yml
+          git commit -m "chore: pin image to ${{ steps.version.outputs.version }}"
+          git push origin "${{ github.ref_name }}"
+
+      - name: Update main if latest minor
+        if: steps.check_latest.outputs.is_latest == 'true'
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          git fetch origin main
+          git checkout main
+          sed -i 's/^version = ".*"/version = "'"${VERSION}"'"/' pyproject.toml
+          sed -i "s|version-[0-9.]*-blue|version-${VERSION}-blue|" README.md
+          git add pyproject.toml README.md
+          git commit -m "chore: sync version to ${VERSION} from patch release"
+          git push origin main
