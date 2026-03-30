@@ -830,14 +830,17 @@ async def test_confirm_rejects_missing_file(
     )
     media_id = resp.json()["media_id"]
 
-    # Storage says file doesn't exist
-    mock_storage.exists.return_value = False
+    # Storage says file doesn't exist — use side_effect for one-time False return
+    mock_storage.exists.side_effect = [False]
 
     confirm_resp = await client.post(
         f"/media/{media_id}/confirm",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert confirm_resp.status_code == 404
+
+    # Restore default behavior so other tests are unaffected
+    mock_storage.exists.side_effect = None
 
 
 async def test_retry_rejects_non_failed(
