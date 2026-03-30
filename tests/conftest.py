@@ -28,27 +28,6 @@ _TEST_TABLES = (
     "users",
 )
 
-DADATA_PARTY_RESPONSE = {
-    "value": 'ООО "РОГА И КОПЫТА"',
-    "data": {
-        "inn": "7707083893",
-        "name": {
-            "short_with_opf": 'ООО "Рога и копыта"',
-            "full_with_opf": 'ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "РОГА И КОПЫТА"',
-        },
-        "state": {
-            "registration_date": 1029456000000,
-        },
-        "address": {
-            "value": "г Москва, ул Ленина, д 1",
-        },
-        "management": {
-            "name": "Иванов Иван Иванович",
-        },
-        "okved": "62.01",
-    },
-}
-
 
 @pytest.fixture(scope="session", autouse=True)
 async def initialize_db() -> AsyncGenerator[None]:
@@ -115,15 +94,6 @@ async def owner_user(create_user: Any) -> tuple[dict[str, Any], str]:
     user_id: str = user_data["id"]
     await User.filter(id=user_id).update(role=UserRole.OWNER)
     return user_data, token
-
-
-@pytest.fixture(autouse=True)
-def mock_dadata(client: AsyncClient) -> Generator[MagicMock]:  # noqa: ARG001
-    mock = MagicMock()
-    mock.find_by_id.return_value = [DADATA_PARTY_RESPONSE]
-    app.dependency_overrides[get_dadata_client] = lambda: mock
-    yield mock
-    app.dependency_overrides.pop(get_dadata_client, None)
 
 
 def _default_org_data(**overrides: Any) -> dict[str, Any]:
@@ -241,6 +211,45 @@ async def renter_token(create_user: Any) -> str:
         surname="Testov",
     )
     return str(token)
+
+
+# ---------------------------------------------------------------------------
+# Autouse mocks for external services.
+# These live here temporarily so that existing tests (which still sit in the
+# root tests/ directory) keep working.  Once a test file is moved into
+# tests/db/ or tests/e2e/, the corresponding conftest in that sub-package
+# takes over and these will be removed.
+# ---------------------------------------------------------------------------
+
+DADATA_PARTY_RESPONSE: dict[str, Any] = {
+    "value": 'ООО "РОГА И КОПЫТА"',
+    "data": {
+        "inn": "7707083893",
+        "name": {
+            "short_with_opf": 'ООО "Рога и копыта"',
+            "full_with_opf": 'ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "РОГА И КОПЫТА"',
+        },
+        "state": {
+            "registration_date": 1029456000000,
+        },
+        "address": {
+            "value": "г Москва, ул Ленина, д 1",
+        },
+        "management": {
+            "name": "Иванов Иван Иванович",
+        },
+        "okved": "62.01",
+    },
+}
+
+
+@pytest.fixture(autouse=True)
+def mock_dadata() -> Generator[MagicMock]:
+    mock = MagicMock()
+    mock.find_by_id.return_value = [DADATA_PARTY_RESPONSE]
+    app.dependency_overrides[get_dadata_client] = lambda: mock
+    yield mock
+    app.dependency_overrides.pop(get_dadata_client, None)
 
 
 @pytest.fixture(autouse=True)
