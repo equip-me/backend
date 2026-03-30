@@ -6,6 +6,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   release:
@@ -74,14 +75,23 @@ jobs:
           git commit -m "chore: pin image to ${{ steps.version.outputs.version }}"
           git push origin "${{ github.ref_name }}"
 
-      - name: Update main if latest minor
+      - name: Open PR to sync version to main
         if: steps.check_latest.outputs.is_latest == 'true'
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
           VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="automation/bump-version-${VERSION}"
           git fetch origin main
-          git checkout main
+          git checkout -b "$BRANCH" origin/main
           sed -i 's/^version = ".*"/version = "'"${VERSION}"'"/' pyproject.toml
           sed -i "s|version-[0-9.]*-blue|version-${VERSION}-blue|" README.md
           git add pyproject.toml README.md
           git commit -m "chore: sync version to ${VERSION} from patch release"
-          git push origin main
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: sync version to ${VERSION}" \
+            --base main \
+            --head "$BRANCH" \
+            --body "Automated version sync from patch release \`${VERSION}\`."
+          gh pr merge --auto --squash
