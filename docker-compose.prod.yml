@@ -62,7 +62,7 @@ services:
       - redis_data:/data
 
   app:
-    image: rental-platform:${APP_VERSION:-latest}
+    image: ghcr.io/khamitovdr/rental-platform:0.2.0
     environment:
       APP_ENV: prod
       DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
@@ -81,7 +81,7 @@ services:
     command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
   worker:
-    image: rental-platform:${APP_VERSION:-latest}
+    image: ghcr.io/khamitovdr/rental-platform:0.2.0
     environment:
       APP_ENV: prod
       DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
