@@ -577,6 +577,21 @@ class TestDeclineOrder:
         assert resp.status_code == 200
         assert resp.json()["status"] == "declined"
 
+    async def test_decline_non_offered(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        resp = await client.patch(
+            f"/orders/{order['id']}/decline",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 400
+
 
 @pytest.mark.anyio
 class TestCancelOrder:
