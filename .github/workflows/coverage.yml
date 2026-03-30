@@ -21,6 +21,15 @@ jobs:
           --health-interval=10s
           --health-timeout=5s
           --health-retries=5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6380:6379
+        options: >-
+          --health-cmd="redis-cli ping"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=5
     env:
       APP_ENV: test
     steps:
@@ -31,6 +40,18 @@ jobs:
         with:
           python-version: "3.14"
           cache: poetry
+      - name: Install ffmpeg
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
+      - name: Start MinIO
+        run: |
+          docker run -d --name minio \
+            -p 9002:9000 \
+            -e MINIO_ROOT_USER=minioadmin \
+            -e MINIO_ROOT_PASSWORD=minioadmin \
+            minio/minio:RELEASE.2025-03-12T18-04-18Z server /data
+          for i in $(seq 1 30); do
+            curl -sf http://localhost:9002/minio/health/live && break || sleep 1
+          done
       - name: Install dependencies
         run: poetry install --no-interaction
       - name: Run tests with coverage
