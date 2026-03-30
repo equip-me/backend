@@ -2,10 +2,7 @@ from typing import Any
 
 from httpx import AsyncClient
 
-from app.core.enums import ListingStatus
-from app.listings.models import Listing, ListingCategory
-from app.organizations.models import Organization
-from app.users.models import User
+from app.listings.models import ListingCategory
 
 
 class TestCreateCategory:
@@ -72,27 +69,30 @@ class TestListPublicCategories:
     ) -> None:
         org_data, token = verified_org
         org_id = org_data["id"]
-        org = await Organization.get(id=org_id)
-        user = await User.get(
-            id=(await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})).json()["id"]
-        )
+        headers = {"Authorization": f"Bearer {token}"}
         # Create 2 published listings in category 0, 1 in category 1
         for _ in range(2):
-            await Listing.create(
-                name="Item",
-                category=seed_categories[0],
-                price=100,
-                status=ListingStatus.PUBLISHED,
-                organization=org,
-                added_by=user,
+            create_resp = await client.post(
+                f"/organizations/{org_id}/listings/",
+                json={"name": "Item", "category_id": seed_categories[0].id, "price": 100.0},
+                headers=headers,
             )
-        await Listing.create(
-            name="Item2",
-            category=seed_categories[1],
-            price=100,
-            status=ListingStatus.PUBLISHED,
-            organization=org,
-            added_by=user,
+            listing_id = create_resp.json()["id"]
+            await client.patch(
+                f"/organizations/{org_id}/listings/{listing_id}/status",
+                json={"status": "published"},
+                headers=headers,
+            )
+        create_resp = await client.post(
+            f"/organizations/{org_id}/listings/",
+            json={"name": "Item2", "category_id": seed_categories[1].id, "price": 100.0},
+            headers=headers,
+        )
+        listing_id = create_resp.json()["id"]
+        await client.patch(
+            f"/organizations/{org_id}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers=headers,
         )
         resp = await client.get("/listings/categories/")
         body = resp.json()
@@ -108,27 +108,23 @@ class TestListOrgCategories:
     ) -> None:
         org_data, token = await create_organization()
         org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
         # Create org-specific category
-        await client.post(
+        cat_resp = await client.post(
             f"/organizations/{org_id}/listings/categories/",
             json={"name": "Org Only"},
-            headers={"Authorization": f"Bearer {token}"},
+            headers=headers,
         )
+        cat_id = cat_resp.json()["id"]
         # Create a listing in the org category so it shows up
-        org = await Organization.get(id=org_id)
-        user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
-        user = await User.get(id=user_resp.json()["id"])
-        org_cat = await ListingCategory.filter(name="Org Only").first()
-        await Listing.create(
-            name="Item",
-            category=org_cat,
-            price=100,
-            organization=org,
-            added_by=user,
+        await client.post(
+            f"/organizations/{org_id}/listings/",
+            json={"name": "Item", "category_id": cat_id, "price": 100.0},
+            headers=headers,
         )
         resp = await client.get(
             f"/organizations/{org_id}/listings/categories/",
-            headers={"Authorization": f"Bearer {token}"},
+            headers=headers,
         )
         assert resp.status_code == 200
         body = resp.json()
@@ -344,7 +340,13 @@ class TestDeleteListing:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 204
-        assert await Listing.get_or_none(id=listing_id) is None
+        # Verify deletion via HTTP — updating deleted listing should return 404
+        get_resp = await client.patch(
+            f"/organizations/{org_id}/listings/{listing_id}",
+            json={"name": "Should Fail"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert get_resp.status_code == 404
 
     async def test_delete_listing_not_found(
         self,
