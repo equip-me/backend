@@ -6,6 +6,7 @@ on:
 permissions:
   contents: write
   packages: write
+  pull-requests: write
 
 jobs:
   release:
@@ -34,20 +35,16 @@ jobs:
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-      - name: Bump version in pyproject.toml
+      - name: Create release branch, bump version, and tag
         run: |
+          git checkout -b "${{ steps.version.outputs.branch }}"
           sed -i 's/^version = ".*"/version = "${{ steps.version.outputs.version }}"/' pyproject.toml
           git add pyproject.toml
           git commit -m "chore: bump version to ${{ steps.version.outputs.version }}"
-
-      - name: Create release branch and tag
-        run: |
-          git branch "${{ steps.version.outputs.branch }}"
           git tag "v${{ steps.version.outputs.version }}"
 
-      - name: Push main, release branch, and tag
+      - name: Push release branch and tag
         run: |
-          git push origin main
           git push origin "${{ steps.version.outputs.branch }}"
           git push origin "v${{ steps.version.outputs.version }}"
 
@@ -61,20 +58,28 @@ jobs:
 
       - name: Pin image in docker-compose.prod.yml on release branch
         run: |
-          git checkout "${{ steps.version.outputs.branch }}"
           IMAGE="ghcr.io/${{ github.repository_owner }}/rental-platform:${{ steps.version.outputs.version }}"
           sed -i "s|image: .*rental-platform.*|image: ${IMAGE}|" docker-compose.prod.yml
           git add docker-compose.prod.yml
           git commit -m "chore: pin image to ${{ steps.version.outputs.version }}"
           git push origin "${{ steps.version.outputs.branch }}"
 
-      - name: Update README badge on main
+      - name: Open PR to sync version to main
+        env:
+          GH_TOKEN: ${{ secrets.RELEASE_TOKEN }}
         run: |
-          git checkout main
           VERSION="${{ steps.version.outputs.version }}"
+          BRANCH="automation/bump-version-${VERSION}"
+          git fetch origin main
+          git checkout -b "$BRANCH" origin/main
+          sed -i 's/^version = ".*"/version = "'"${VERSION}"'"/' pyproject.toml
           sed -i "s|version-[0-9.]*-blue|version-${VERSION}-blue|" README.md
-          if ! git diff --quiet README.md; then
-            git add README.md
-            git commit -m "chore: update version badge to ${VERSION}"
-            git push origin main
-          fi
+          git add pyproject.toml README.md
+          git commit -m "chore: bump version to ${VERSION}"
+          git push origin "$BRANCH"
+          gh pr create \
+            --title "chore: bump version to ${VERSION}" \
+            --base main \
+            --head "$BRANCH" \
+            --body "Automated version sync from release \`${VERSION}\`."
+          gh pr merge --auto --squash
