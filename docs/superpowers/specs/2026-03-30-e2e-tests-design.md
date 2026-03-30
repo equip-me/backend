@@ -1,10 +1,124 @@
-# E2E Test Suite — Design Spec
+# E2E Test Suite & Test Restructuring — Design Spec
 
-Comprehensive end-to-end tests covering all business logic of the rental platform. Tests exercise full user journeys across domain boundaries with real infrastructure (PostgreSQL, MinIO, Redis/ARQ, Dadata API). The only mock is date patching for order auto-transitions.
+Comprehensive end-to-end tests covering all business logic, plus a full restructuring of the existing test suite into three clean layers: `unit/`, `db/`, `e2e/`. Each layer has its own conftest with appropriate dependencies — no mock overriding hacks.
 
 ---
 
-## Infrastructure
+## Part 1: Test Suite Restructuring
+
+### Motivation
+
+The current flat `tests/` directory mixes unit tests (no DB), DB-dependent integration tests, and proto-e2e tests in the same files with shared autouse mocks. This causes:
+
+- Unit tests unnecessarily depend on DB fixtures (slow, fragile)
+- Autouse mocks for external services (dadata, storage, ARQ) apply globally — e2e tests would need to override them
+- No way to run unit tests without docker-compose infrastructure
+
+### New Structure
+
+```
+tests/
+├── conftest.py                     # Base: DB init, truncation, client, factories (NO mocks)
+├── unit/
+│   ├── conftest.py                 # Minimal (no DB, no external services)
+│   ├── test_identifiers.py         # 5 tests (generate_short_id pure logic)
+│   ├── test_observability.py       # 10 tests (moved as-is)
+│   ├── test_order_state_machine.py # 22 tests (moved as-is)
+│   ├── test_media_processing.py    # 11 tests (moved as-is)
+│   ├── test_user_validation.py     # ~14 tests (extracted from test_users.py)
+│   ├── test_media_storage.py       # 4-6 tests (extracted from test_media.py)
+│   └── test_worker_config.py       # 2 tests (extracted from test_worker.py)
+├── db/
+│   ├── conftest.py                 # Autouse mocks: dadata, storage, arq
+│   ├── test_identifiers.py         # 4 tests (create_with_short_id DB operations)
+│   ├── test_users.py               # ~28 tests (DB-dependent user tests)
+│   ├── test_organizations.py       # 51 tests (moved, flaws fixed)
+│   ├── test_listings.py            # 27 tests (moved, flaws fixed)
+│   ├── test_orders.py              # 26 tests (moved, flaws fixed)
+│   ├── test_media.py               # ~38 tests (DB-dependent media tests)
+│   └── test_worker.py              # 11 tests (DB-dependent worker tests)
+└── e2e/
+    ├── conftest.py                 # Real everything, date mocking, @pytest.mark.e2e
+    ├── test_e2e_media.py           # 5 tests (moved from tests/, adapted)
+    ├── test_user_registration.py   # 16 scenarios
+    ├── test_org_lifecycle.py       # 32 scenarios
+    ├── test_listing_catalog.py     # 25 scenarios
+    ├── test_order_happy_path.py    # 26 scenarios
+    ├── test_order_cancellations.py # 16 scenarios
+    └── test_full_rental_journey.py # 1 mega-scenario (21 steps)
+```
+
+### Conftest Layering
+
+**`tests/conftest.py` (root)** — shared infrastructure only, NO mocks:
+- `initialize_db` (session-scoped) — Tortoise ORM init, schema creation
+- `truncate_tables` (autouse) — clean DB between tests
+- `client` — httpx AsyncClient with ASGITransport
+- Factory fixtures: `create_user`, `create_organization`, `create_category`, `seed_categories`, `verified_org`, `create_listing`, `renter_token`
+
+**`tests/unit/conftest.py`** — minimal, no DB fixtures needed. Unit tests that currently inherit DB fixtures will no longer depend on them.
+
+**`tests/db/conftest.py`** — autouse mocks for external services:
+- `mock_dadata` — mocks Dadata API client
+- `mock_storage` — mocks S3/MinIO storage
+- `mock_arq_pool` — mocks ARQ job queue
+
+**`tests/e2e/conftest.py`** — real everything:
+- No mocks for dadata, storage, or ARQ (real services via docker-compose)
+- `mock_today` helper — patches `datetime.date.today()` for order auto-transitions (the only mock)
+- `@pytest.mark.e2e` on all e2e tests
+- Real INN for Dadata calls (e.g., Sberbank `7707083893`)
+
+### Test Classification Results
+
+Files that need splitting (contain both unit and DB tests):
+
+**`test_identifiers.py`:**
+- Unit (5): `test_generate_short_id_default_length`, `test_generate_short_id_custom_length`, `test_generate_short_id_valid_characters`, `test_generate_short_id_uniqueness`, `test_short_id_alphabet_is_uppercase_alphanumeric`
+- DB (4): `test_create_with_short_id_success`, `test_create_with_short_id_retries_on_pk_collision`, `test_create_with_short_id_propagates_non_pk_error`, `test_create_with_short_id_raises_after_max_retries`
+
+**`test_users.py`:**
+- Unit (~14): validation tests — password strength (3 variants → parameterize), invalid phone, invalid email, expired token, token without sub claim, no token, missing password fields, weak new password, role route schema validation
+- DB (~28): registration, login, profile CRUD, suspension, role assignment, privilege assignment
+
+**`test_media.py`:**
+- Unit (4-6): `test_storage_upload_and_download`, `test_storage_presigned_upload_url`, `test_storage_presigned_download_url`, `test_storage_delete_prefix`
+- DB (~38): all endpoint tests, media attachment, orphan cleanup
+
+**`test_worker.py`:**
+- Unit (2): `test_process_media_job_not_found`, `test_worker_settings_redis_settings`
+- DB (11): all variant spec tests, processing jobs, orchestration, cleanup cron
+
+Files that move whole:
+- `test_observability.py` → `unit/` (all 10 tests are unit)
+- `test_order_state_machine.py` → `unit/` (all 22 tests are unit)
+- `test_media_processing.py` → `unit/` (all 11 tests are unit)
+- `test_organizations.py` → `db/` (all 51 tests are DB)
+- `test_listings.py` → `db/` (all 27 tests are DB)
+- `test_orders.py` → `db/` (all 26 tests are DB)
+- `test_e2e_media.py` → `e2e/` (all 6 tests)
+
+### Design/Style Flaws to Fix During Restructuring
+
+1. **`test_users.py`** — ~14 validation tests hit the full HTTP stack unnecessarily. Extract to `unit/test_user_validation.py` as direct Pydantic schema tests. Parameterize duplicate password tests (no lowercase, no uppercase, no digit) into a single parameterized test.
+
+2. **`test_listings.py`** — 3 tests mix HTTP client calls with direct ORM queries (`Organization.get()`, `User.get()`, `Listing.get_or_none()`). Remove direct ORM access; verify through HTTP endpoints only.
+
+3. **`test_orders.py`** — Several tests have unnecessary fixture setup (e.g., `test_create_order_unauthenticated` creates a full listing it doesn't need). `TestDeclineOrder` has only 1 test — add missing edge cases (decline pending, decline confirmed). Validation-only tests (`test_offer_negative_cost_rejected`, `test_offer_end_before_start_rejected`) don't need full order creation.
+
+4. **`test_media.py`** — `test_confirm_rejects_missing_file` mutates autouse `mock_storage` fixture (test isolation risk). Fix: use isolated mock per test. Remove unused `mock_storage` parameters marked `# noqa: ARG001`. Performance: `test_attach_listing_media_exceeds_photo_limit` creates 21 photos in a loop — consider batch creation.
+
+5. **`test_organizations.py`** — `TestRequireOrgEditor` (3 tests) mixes HTTP calls with direct dependency function calls. Pick one style consistently (HTTP for db/ layer).
+
+6. **`test_e2e_media.py`** — `test_processing_failure_e2e` uses bare `pytest.raises(Exception)`. Narrow to specific exception type.
+
+7. **`test_worker.py`** — `test_worker_settings_redis_settings` is trivial (tests a config constant). `test_process_media_job_not_found` lacks clear assertions — add explicit return value check.
+
+8. **`test_observability.py`** / **`test_media_processing.py`** — Several `async def` tests that don't use `await`. Harmless but unnecessary — convert to sync where applicable.
+
+---
+
+## Part 2: E2E Test Infrastructure
 
 ### Test Environment
 
@@ -16,41 +130,15 @@ All e2e tests run against real services from `docker-compose.test.yml`:
 **External API:**
 - **Dadata** — real API calls. Key from `.env` locally, GitHub secret `DADATA_API_KEY` in CI.
 
-### `tests/e2e/conftest.py`
-
-- Override root conftest autouse mocks (`mock_dadata`, `mock_storage`, `mock_arq_pool`) — redefine as no-ops so real dependencies pass through
-- **`mock_today`** helper — patches `datetime.date.today()` for order auto-transition testing (the only mock in e2e)
-- **`@pytest.mark.e2e`** on all e2e tests — run via `pytest -m e2e` or exclude via `pytest -m "not e2e"`
-- Reuse factory fixtures from root `conftest.py` (`client`, `create_user`, `create_organization`, etc.)
-- Real INN for Dadata calls (e.g., Sberbank `7707083893`)
-
 ### CI Configuration
 
 - Add `DADATA_API_KEY` as GitHub Actions secret
 - Pass to test environment in CI workflow
-- E2e tests run as a separate CI step: `pytest -m e2e`
+- Three CI steps: `pytest tests/unit/` (no infra), `pytest tests/db/` (needs PG), `pytest -m e2e` (needs all services + API key)
 
 ---
 
-## File Structure
-
-```
-tests/e2e/
-├── conftest.py                    # Real dadata/storage/ARQ, date mocking, e2e mark
-├── test_e2e_media.py              # Moved from tests/ (standalone media workflows)
-├── test_user_registration.py      # 16 scenarios
-├── test_org_lifecycle.py          # 32 scenarios
-├── test_listing_catalog.py        # 25 scenarios
-├── test_order_happy_path.py       # 26 scenarios
-├── test_order_cancellations.py    # 16 scenarios
-└── test_full_rental_journey.py    # 1 mega-scenario (21 steps)
-```
-
-**Total: ~116 e2e scenarios**
-
----
-
-## Scenarios
+## Part 3: E2E Scenarios
 
 ### `test_user_registration.py` — User Registration & Auth (16 scenarios)
 
@@ -247,7 +335,7 @@ One large test that walks through the entire platform lifecycle as a real usage 
 
 ### `test_e2e_media.py` — Standalone Media Workflows (moved from `tests/`)
 
-Existing 5 tests, moved into `tests/e2e/`. Since the e2e conftest uses real storage and ARQ (instead of the mocks these tests were written against), the tests may need minor adjustments to work with real MinIO and Redis. Adapt as needed during implementation.
+Existing 5 tests, moved into `tests/e2e/`. Since the e2e conftest uses real storage and ARQ (instead of the mocks these tests were written against), the tests may need minor adjustments to work with real MinIO and Redis. Fix overly broad `pytest.raises(Exception)` with specific exception type.
 
 1. Photo upload → processing → retrieval
 2. Video upload → processing → retrieval
