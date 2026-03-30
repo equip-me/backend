@@ -48,7 +48,7 @@ runs:
           LATEST_FLAG="--latest=false"
         fi
 
-        PREV_TAG=$(git tag --sort=-v:refname | grep -v "^v${{ inputs.version }}$" | head -1)
+        PREV_TAG=$(git tag --sort=-v:refname | grep -v "^v${{ inputs.version }}$" | head -1 || true)
 
         if [ -n "$PREV_TAG" ]; then
           gh release create "v${{ inputs.version }}" \
