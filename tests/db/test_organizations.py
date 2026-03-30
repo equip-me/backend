@@ -1,14 +1,8 @@
 from typing import Any
 from unittest.mock import MagicMock
 
-import pytest
 from httpx import AsyncClient
 
-from app.core.enums import MembershipRole
-from app.core.exceptions import PermissionDeniedError
-from app.organizations.dependencies import require_org_editor
-from app.organizations.models import Membership, Organization
-from app.users.models import User
 from tests.conftest import _default_org_data
 
 
@@ -702,51 +696,59 @@ class TestMembershipList:
 
 
 class TestRequireOrgEditor:
+    """Test editor permission via POST /organizations/{org_id}/listings/categories/ (requires editor role)."""
+
     async def test_editor_passes(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
         org_data, admin_token = await create_organization()
+        org_id = org_data["id"]
         user_data, user_token = await create_user(email="editor@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/organizations/{org_id}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/organizations/{org_id}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
-        org = await Organization.get(id=org_data["id"])
-        user = await User.get(id=user_data["id"])
-        membership = await require_org_editor(org, user)
-        assert membership.role == MembershipRole.EDITOR
+        resp = await client.post(
+            f"/organizations/{org_id}/listings/categories/",
+            json={"name": "Editor Category"},
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert resp.status_code == 201
 
     async def test_admin_passes(self, client: AsyncClient, create_organization: Any) -> None:
-        org_data, _ = await create_organization()
-        org = await Organization.get(id=org_data["id"])
-        creator_membership = await Membership.filter(organization=org).first()
-        assert creator_membership is not None
-        await creator_membership.fetch_related("user")
-        user: User = creator_membership.user
-        membership = await require_org_editor(org, user)
-        assert membership.role == MembershipRole.ADMIN
+        org_data, admin_token = await create_organization()
+        org_id = org_data["id"]
+        resp = await client.post(
+            f"/organizations/{org_id}/listings/categories/",
+            json={"name": "Admin Category"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 201
 
     async def test_viewer_rejected(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
         org_data, admin_token = await create_organization()
+        org_id = org_data["id"]
         user_data, user_token = await create_user(email="viewer@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/organizations/{org_id}/members/invite",
             json={"user_id": user_data["id"], "role": "viewer"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/organizations/{org_id}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
-        org = await Organization.get(id=org_data["id"])
-        user = await User.get(id=user_data["id"])
-        with pytest.raises(PermissionDeniedError):
-            await require_org_editor(org, user)
+        resp = await client.post(
+            f"/organizations/{org_id}/listings/categories/",
+            json={"name": "Viewer Category"},
+            headers={"Authorization": f"Bearer {user_token}"},
+        )
+        assert resp.status_code == 403
 
 
 class TestVerifyOrganization:

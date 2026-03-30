@@ -40,7 +40,7 @@ def _extract_dadata_fields(result: dict[str, Any]) -> dict[str, Any]:
     name = data.get("name", {})
     state = data.get("state", {})
     address = data.get("address", {})
-    management = data.get("management", {})
+    management = data.get("management") or {}
 
     reg_date = None
     reg_ts = state.get("registration_date")

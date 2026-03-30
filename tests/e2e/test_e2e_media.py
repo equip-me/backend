@@ -11,7 +11,7 @@ from uuid import uuid4
 
 import httpx
 import pytest
-from PIL import Image
+from PIL import Image, UnidentifiedImageError
 
 from app.core.config import get_settings
 from app.core.enums import MediaContext, MediaKind, MediaStatus
@@ -19,6 +19,8 @@ from app.media.models import Media
 from app.media.storage import StorageClient
 from app.media.worker import process_media_job
 from app.users.models import User
+
+pytestmark = pytest.mark.e2e
 
 _HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
@@ -329,7 +331,7 @@ async def test_processing_failure_e2e(real_storage: StorageClient, db_user: User
 
     try:
         with patch("app.media.worker._get_storage", return_value=real_storage):
-            with pytest.raises(Exception):  # noqa: B017
+            with pytest.raises(UnidentifiedImageError):
                 await process_media_job({}, str(media.id))
 
         await media.refresh_from_db()

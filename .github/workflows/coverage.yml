@@ -32,6 +32,7 @@ jobs:
           --health-retries=5
     env:
       APP_ENV: test
+      DADATA_API_KEY: ${{ secrets.DADATA_API_KEY }}
     steps:
       - uses: actions/checkout@v5
       - name: Install Poetry

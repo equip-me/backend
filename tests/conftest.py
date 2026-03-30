@@ -1,18 +1,17 @@
-from collections.abc import AsyncGenerator, Generator
+from collections.abc import AsyncGenerator
 from typing import Any
-from unittest.mock import AsyncMock, MagicMock
 
 import httpx
 import pytest
 from httpx import ASGITransport, AsyncClient
 from tortoise import Tortoise, connections
 
+from app.core.config import get_settings
 from app.core.database import get_tortoise_config
 from app.core.enums import OrganizationStatus, UserRole
 from app.listings.models import ListingCategory
 from app.main import app
-from app.media.storage import get_storage
-from app.organizations.dependencies import get_dadata_client
+from app.media.storage import init_storage
 from app.organizations.models import Organization
 from app.users.models import User
 
@@ -28,27 +27,6 @@ _TEST_TABLES = (
     "users",
 )
 
-DADATA_PARTY_RESPONSE = {
-    "value": 'ООО "РОГА И КОПЫТА"',
-    "data": {
-        "inn": "7707083893",
-        "name": {
-            "short_with_opf": 'ООО "Рога и копыта"',
-            "full_with_opf": 'ОБЩЕСТВО С ОГРАНИЧЕННОЙ ОТВЕТСТВЕННОСТЬЮ "РОГА И КОПЫТА"',
-        },
-        "state": {
-            "registration_date": 1029456000000,
-        },
-        "address": {
-            "value": "г Москва, ул Ленина, д 1",
-        },
-        "management": {
-            "name": "Иванов Иван Иванович",
-        },
-        "okved": "62.01",
-    },
-}
-
 
 @pytest.fixture(scope="session", autouse=True)
 async def initialize_db() -> AsyncGenerator[None]:
@@ -58,6 +36,16 @@ async def initialize_db() -> AsyncGenerator[None]:
     for table in _TEST_TABLES:
         await conn.execute_query(f'DROP TABLE IF EXISTS "{table}" CASCADE;')
     await Tortoise.generate_schemas()
+
+    settings = get_settings()
+    storage = init_storage(
+        endpoint_url=settings.storage.endpoint_url,
+        access_key=settings.storage.access_key,
+        secret_key=settings.storage.secret_key,
+        bucket=settings.storage.bucket,
+    )
+    await storage.ensure_bucket()
+
     yield
     await Tortoise.close_connections()
 
@@ -115,15 +103,6 @@ async def owner_user(create_user: Any) -> tuple[dict[str, Any], str]:
     user_id: str = user_data["id"]
     await User.filter(id=user_id).update(role=UserRole.OWNER)
     return user_data, token
-
-
-@pytest.fixture(autouse=True)
-def mock_dadata(client: AsyncClient) -> Generator[MagicMock]:  # noqa: ARG001
-    mock = MagicMock()
-    mock.find_by_id.return_value = [DADATA_PARTY_RESPONSE]
-    app.dependency_overrides[get_dadata_client] = lambda: mock
-    yield mock
-    app.dependency_overrides.pop(get_dadata_client, None)
 
 
 def _default_org_data(**overrides: Any) -> dict[str, Any]:
@@ -241,25 +220,3 @@ async def renter_token(create_user: Any) -> str:
         surname="Testov",
     )
     return str(token)
-
-
-@pytest.fixture(autouse=True)
-def mock_storage() -> Generator[AsyncMock]:
-    mock = AsyncMock()
-    mock.generate_upload_url.return_value = "https://minio:9000/bucket/pending/test/file?X-Amz-Signature=abc"
-    mock.generate_download_url.return_value = "https://minio:9000/bucket/media/test/file?X-Amz-Signature=abc"
-    mock.exists.return_value = True
-    app.dependency_overrides[get_storage] = lambda: mock
-    yield mock
-    app.dependency_overrides.pop(get_storage, None)
-
-
-@pytest.fixture(autouse=True)
-def mock_arq_pool(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock_pool = AsyncMock()
-    mock_pool.enqueue_job = AsyncMock()
-
-    async def _mock_get_pool() -> AsyncMock:
-        return mock_pool
-
-    monkeypatch.setattr("app.media.worker.get_arq_pool", _mock_get_pool)

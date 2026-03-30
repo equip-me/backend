@@ -94,6 +94,9 @@ ignore = [
     "N801",
     "SIM117",
 ]
+"tests/e2e/test_full_rental_journey.py" = [
+    "PLR0915",  # mega e2e test is intentionally one long function
+]
 
 [tool.mypy]
 python_version = "3.14"
@@ -150,6 +153,9 @@ addopts = ["-p", "no:anyio"]
 env = ["APP_ENV=test"]
 filterwarnings = [
     "error::tortoise.warnings.TortoiseLoopSwitchWarning",
+]
+markers = [
+    "e2e: end-to-end tests requiring all real services (PG, MinIO, Redis, Dadata)",
 ]
 
 [tool.coverage.run]
