@@ -20,6 +20,8 @@ from app.media.storage import StorageClient
 from app.media.worker import process_media_job
 from app.users.models import User
 
+pytestmark = pytest.mark.e2e
+
 _HAS_FFMPEG = shutil.which("ffmpeg") is not None
 
 

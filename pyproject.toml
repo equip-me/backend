@@ -151,6 +151,9 @@ env = ["APP_ENV=test"]
 filterwarnings = [
     "error::tortoise.warnings.TortoiseLoopSwitchWarning",
 ]
+markers = [
+    "e2e: end-to-end tests requiring all real services (PG, MinIO, Redis, Dadata)",
+]
 
 [tool.coverage.run]
 source = ["app"]

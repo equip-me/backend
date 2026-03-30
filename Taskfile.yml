@@ -77,6 +77,23 @@ tasks:
     cmds:
       - poetry run pytest {{.CLI_ARGS}}
 
+  test:unit:
+    desc: Run unit tests (no infrastructure needed)
+    cmds:
+      - poetry run pytest tests/unit/ {{.CLI_ARGS}}
+
+  test:db:
+    desc: Run DB integration tests
+    deps: [test:up]
+    cmds:
+      - poetry run pytest tests/db/ {{.CLI_ARGS}}
+
+  test:e2e:
+    desc: Run E2E tests (needs all services + DADATA_API_KEY)
+    deps: [test:up]
+    cmds:
+      - poetry run pytest tests/e2e/ {{.CLI_ARGS}}
+
   test:cov:
     desc: Run tests with coverage report
     deps: [test:up]
