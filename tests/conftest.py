@@ -6,10 +6,12 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from tortoise import Tortoise, connections
 
+from app.core.config import get_settings
 from app.core.database import get_tortoise_config
 from app.core.enums import OrganizationStatus, UserRole
 from app.listings.models import ListingCategory
 from app.main import app
+from app.media.storage import init_storage
 from app.organizations.models import Organization
 from app.users.models import User
 
@@ -34,6 +36,16 @@ async def initialize_db() -> AsyncGenerator[None]:
     for table in _TEST_TABLES:
         await conn.execute_query(f'DROP TABLE IF EXISTS "{table}" CASCADE;')
     await Tortoise.generate_schemas()
+
+    settings = get_settings()
+    storage = init_storage(
+        endpoint_url=settings.storage.endpoint_url,
+        access_key=settings.storage.access_key,
+        secret_key=settings.storage.secret_key,
+        bucket=settings.storage.bucket,
+    )
+    await storage.ensure_bucket()
+
     yield
     await Tortoise.close_connections()
 
