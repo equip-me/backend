@@ -1,0 +1,64 @@
+name: Publish Release
+description: Build Docker image, push to ghcr.io, create GitHub Release
+
+inputs:
+  version:
+    description: Version string (e.g., 0.2.0)
+    required: true
+  image_name:
+    description: Full ghcr.io image name (e.g., ghcr.io/owner/rental-platform)
+    required: true
+  github_token:
+    description: GitHub token for registry auth and release creation
+    required: true
+  is_latest:
+    description: Whether to mark the GitHub Release as "latest"
+    required: true
+    default: "true"
+
+runs:
+  using: composite
+  steps:
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to ghcr.io
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ inputs.github_token }}
+
+    - name: Build and push Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        push: true
+        tags: ${{ inputs.image_name }}:${{ inputs.version }}
+        build-args: APP_VERSION=${{ inputs.version }}
+
+    - name: Create GitHub Release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+      run: |
+        if [ "${{ inputs.is_latest }}" = "true" ]; then
+          LATEST_FLAG="--latest"
+        else
+          LATEST_FLAG="--latest=false"
+        fi
+
+        PREV_TAG=$(git tag --sort=-v:refname | grep -v "^v${{ inputs.version }}$" | head -1)
+
+        if [ -n "$PREV_TAG" ]; then
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --generate-notes \
+            --notes-start-tag "$PREV_TAG" \
+            $LATEST_FLAG
+        else
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --generate-notes \
+            $LATEST_FLAG
+        fi
