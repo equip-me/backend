@@ -588,7 +588,7 @@ async def test_full_rental_journey(
             headers=_auth(owner_token),
         )
         assert members_resp.status_code == 200
-        members = members_resp.json()
+        members = members_resp.json()["items"]
         assert len(members) == 2
         member_roles = {m["user_id"]: m["role"] for m in members}
         assert member_roles[owner_id] == MembershipRole.ADMIN

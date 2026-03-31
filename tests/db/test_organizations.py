@@ -48,7 +48,7 @@ class TestCreateOrganization:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert members_resp.status_code == 200
-        members = members_resp.json()
+        members = members_resp.json()["items"]
         assert len(members) == 1
         assert members[0]["role"] == "admin"
         assert members[0]["status"] == "member"
@@ -135,7 +135,7 @@ class TestListUserOrganizations:
         org_data, token = await create_organization()
         resp = await client.get("/api/v1/users/me/organizations", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
-        orgs = resp.json()
+        orgs = resp.json()["items"]
         assert len(orgs) == 1
         assert orgs[0]["id"] == org_data["id"]
 
@@ -143,7 +143,7 @@ class TestListUserOrganizations:
         _, token = await create_user()
         resp = await client.get("/api/v1/users/me/organizations", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json()["items"] == []
 
     async def test_list_my_orgs_unauthenticated(self, client: AsyncClient) -> None:
         resp = await client.get("/api/v1/users/me/organizations")
@@ -549,7 +549,7 @@ class TestMembershipRoleChange:
             f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
-        original_admin = next(m for m in members_resp.json() if m["id"] != member_id)
+        original_admin = next(m for m in members_resp.json()["items"] if m["id"] != member_id)
         resp = await client.patch(
             f"/api/v1/organizations/{org_data['id']}/members/{original_admin['id']}/role",
             json={"role": "editor"},
@@ -564,7 +564,7 @@ class TestMembershipRoleChange:
             f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
-        admin_member_id = members_resp.json()[0]["id"]
+        admin_member_id = members_resp.json()["items"][0]["id"]
         resp = await client.patch(
             f"/api/v1/organizations/{org_data['id']}/members/{admin_member_id}/role",
             json={"role": "editor"},
@@ -627,7 +627,7 @@ class TestMembershipRemove:
             f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
-        admin_member_id = members_resp.json()[0]["id"]
+        admin_member_id = members_resp.json()["items"][0]["id"]
         resp = await client.delete(
             f"/api/v1/organizations/{org_data['id']}/members/{admin_member_id}",
             headers={"Authorization": f"Bearer {admin_token}"},
@@ -654,7 +654,7 @@ class TestMembershipRemove:
             f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
-        admin_member = next(m for m in members_resp.json() if m["role"] == "admin")
+        admin_member = next(m for m in members_resp.json()["items"] if m["role"] == "admin")
         # Editor tries to remove admin
         resp = await client.delete(
             f"/api/v1/organizations/{org_data['id']}/members/{admin_member['id']}",
@@ -682,7 +682,7 @@ class TestMembershipList:
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 2
+        assert len(resp.json()["items"]) == 2
 
     async def test_list_members_non_member(
         self, client: AsyncClient, create_organization: Any, create_user: Any

@@ -4,6 +4,7 @@ from fastapi import APIRouter, Depends
 
 from app.core.dependencies import require_active_user
 from app.core.enums import MediaOwnerType
+from app.core.pagination import CursorParams, PaginatedResponse
 from app.media import service as media_service
 from app.media.storage import StorageClient, get_storage
 from app.organizations import service as org_service
@@ -55,15 +56,25 @@ async def update_me(
     return user_read
 
 
-@router.get("/me/organizations", response_model=list[OrganizationRead])
+@router.get("/me/organizations", response_model=PaginatedResponse[OrganizationRead])
 async def list_my_organizations(
     user: Annotated[User, Depends(require_active_user)],
     storage: Annotated[StorageClient, Depends(get_storage)],
-) -> list[OrganizationRead]:
-    orgs = await org_service.list_user_organizations(user)
-    for org_read in orgs:
-        org_read.photo = await media_service.get_profile_photo(MediaOwnerType.ORGANIZATION, org_read.id, storage)
-    return orgs
+    cursor: str | None = None,
+    limit: int = 20,
+) -> PaginatedResponse[OrganizationRead]:
+    params = CursorParams(cursor=cursor, limit=limit)
+    orgs, next_cursor, has_more = await org_service.list_user_organizations(user, params)
+    org_reads: list[OrganizationRead] = []
+    for org in orgs:
+        org_read = OrganizationRead.model_validate(org)
+        org_read.photo = await media_service.get_profile_photo(
+            MediaOwnerType.ORGANIZATION,
+            org_read.id,
+            storage,
+        )
+        org_reads.append(org_read)
+    return PaginatedResponse(items=org_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @router.get("/{user_id}", response_model=UserRead)

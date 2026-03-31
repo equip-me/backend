@@ -169,7 +169,7 @@ async def test_create_organization(client: httpx.AsyncClient) -> None:
     # Verify creator is admin member
     members_resp = await client.get(f"/api/v1/organizations/{org['id']}/members", headers=_auth(token))
     assert members_resp.status_code == 200
-    members = members_resp.json()
+    members = members_resp.json()["items"]
     assert len(members) == 1
     assert members[0]["user_id"] == user["id"]
     assert members[0]["role"] == MembershipRole.ADMIN
@@ -496,7 +496,7 @@ async def test_member_leaves_voluntarily(client: httpx.AsyncClient) -> None:
         headers=_auth(admin_token),
     )
     assert members_resp.status_code == 200
-    member_ids = [m["user_id"] for m in members_resp.json()]
+    member_ids = [m["user_id"] for m in members_resp.json()["items"]]
     assert invitee["id"] not in member_ids
 
 
@@ -533,7 +533,7 @@ async def test_list_members(client: httpx.AsyncClient) -> None:
     # List members
     resp = await client.get(f"/api/v1/organizations/{org['id']}/members", headers=_auth(admin_token))
     assert resp.status_code == 200
-    members = resp.json()
+    members = resp.json()["items"]
     assert len(members) == 3
     roles = {m["role"] for m in members}
     assert roles == {MembershipRole.ADMIN, MembershipRole.EDITOR, MembershipRole.VIEWER}
