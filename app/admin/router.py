@@ -3,7 +3,8 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.core.dependencies import require_platform_admin, require_platform_owner
-from app.core.enums import MediaOwnerType
+from app.core.enums import MediaOwnerType, UserRole
+from app.core.pagination import CursorParams, PaginatedResponse
 from app.media import service as media_service
 from app.media.storage import StorageClient, get_storage
 from app.organizations import service as org_service
@@ -13,6 +14,20 @@ from app.users.models import User
 from app.users.schemas import AdminRoleUpdate, PrivilegeUpdate, UserRead
 
 router = APIRouter(prefix="/api/v1/private", tags=["Admin"])
+
+
+@router.get("/users/", response_model=PaginatedResponse[UserRead])
+async def list_users(
+    _admin: Annotated[User, Depends(require_platform_admin)],
+    storage: Annotated[StorageClient, Depends(get_storage)],
+    cursor: str | None = None,
+    limit: int = 20,
+    search: str | None = None,
+    role: UserRole | None = None,
+) -> PaginatedResponse[UserRead]:
+    """List all platform users. Supports search by name/email and role filter. Platform Admin only."""
+    params = CursorParams(cursor=cursor, limit=limit)
+    return await user_service.list_users(params, storage, search=search, role=role)
 
 
 @router.patch("/users/{user_id}/role", response_model=UserRead)

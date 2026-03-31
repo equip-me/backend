@@ -1,3 +1,5 @@
+from tortoise.expressions import Q
+
 from app.core.enums import MediaOwnerType, UserRole
 from app.core.exceptions import (
     AccountSuspendedError,
@@ -6,6 +8,7 @@ from app.core.exceptions import (
     NotFoundError,
 )
 from app.core.identifiers import create_with_short_id
+from app.core.pagination import CursorParams, PaginatedResponse, paginate
 from app.core.security import create_access_token, hash_password, verify_password
 from app.media import service as media_service
 from app.media.storage import StorageClient
@@ -13,7 +16,7 @@ from app.observability.events import emit_event
 from app.observability.metrics import auth_attempts
 from app.observability.tracing import traced
 from app.users.models import User
-from app.users.schemas import AdminRoleUpdate, PrivilegeUpdate, TokenResponse, UserCreate, UserUpdate
+from app.users.schemas import AdminRoleUpdate, PrivilegeUpdate, TokenResponse, UserCreate, UserRead, UserUpdate
 
 
 @traced
@@ -107,3 +110,30 @@ async def change_privilege(user_id: str, data: PrivilegeUpdate) -> User:
     user.role = data.role
     await user.save()
     return user
+
+
+@traced
+async def list_users(
+    params: CursorParams,
+    storage: StorageClient,
+    search: str | None = None,
+    role: UserRole | None = None,
+) -> PaginatedResponse[UserRead]:
+    qs = User.all()
+    if search:
+        qs = qs.filter(
+            Q(name__icontains=search) | Q(surname__icontains=search) | Q(email__icontains=search),
+        )
+    if role:
+        qs = qs.filter(role=role)
+
+    items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
+
+    user_reads: list[UserRead] = []
+    for user in items:
+        photo = await media_service.get_profile_photo(MediaOwnerType.USER, user.id, storage)
+        user_read = UserRead.model_validate(user)
+        user_read.profile_photo = photo
+        user_reads.append(user_read)
+
+    return PaginatedResponse(items=user_reads, next_cursor=next_cursor, has_more=has_more)
