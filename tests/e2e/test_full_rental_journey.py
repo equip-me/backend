@@ -77,10 +77,10 @@ async def _register(client: httpx.AsyncClient, **overrides: Any) -> tuple[dict[s
         "surname": "Иванов",
     }
     defaults.update(overrides)
-    resp = await client.post("/users/", json=defaults)
+    resp = await client.post("/api/v1/users/", json=defaults)
     assert resp.status_code == 200, resp.text
     token: str = resp.json()["access_token"]
-    me = await client.get("/users/me", headers=_auth(token))
+    me = await client.get("/api/v1/users/me", headers=_auth(token))
     assert me.status_code == 200, me.text
     return me.json(), token
 
@@ -213,7 +213,7 @@ async def test_full_rental_journey(
         uploaded_media.append(renter_photo)
 
         patch_resp = await client.patch(
-            "/users/me",
+            "/api/v1/users/me",
             json={"profile_photo_id": str(renter_photo.id)},
             headers=_auth(renter_token),
         )
@@ -237,7 +237,7 @@ async def test_full_rental_journey(
         # Step 3: Org owner creates organization (real Dadata, adds contacts)
         # ==================================================================
         org_resp = await client.post(
-            "/organizations/",
+            "/api/v1/organizations/",
             json={
                 "inn": SBERBANK_INN,
                 "contacts": [
@@ -262,7 +262,7 @@ async def test_full_rental_journey(
         # Step 4: Org owner adds payment details
         # ==================================================================
         pay_resp = await client.post(
-            f"/organizations/{org_id}/payment-details",
+            f"/api/v1/organizations/{org_id}/payment-details",
             json=_PAYMENT_DETAILS,
             headers=_auth(owner_token),
         )
@@ -282,7 +282,7 @@ async def test_full_rental_journey(
         uploaded_media.append(org_photo)
 
         photo_resp = await client.patch(
-            f"/organizations/{org_id}/photo",
+            f"/api/v1/organizations/{org_id}/photo",
             json={"photo_id": str(org_photo.id)},
             headers=_auth(owner_token),
         )
@@ -303,7 +303,7 @@ async def test_full_rental_journey(
         await User.filter(id=admin_data["id"]).update(role=UserRole.ADMIN)
 
         verify_resp = await client.patch(
-            f"/private/organizations/{org_id}/verify",
+            f"/api/v1/private/organizations/{org_id}/verify",
             headers=_auth(admin_token),
         )
         assert verify_resp.status_code == 200
@@ -322,7 +322,7 @@ async def test_full_rental_journey(
         editor_id = editor_data["id"]
 
         invite_resp = await client.post(
-            f"/organizations/{org_id}/members/invite",
+            f"/api/v1/organizations/{org_id}/members/invite",
             json={"user_id": editor_id, "role": MembershipRole.EDITOR},
             headers=_auth(owner_token),
         )
@@ -333,7 +333,7 @@ async def test_full_rental_journey(
         membership_id = membership["id"]
 
         accept_resp = await client.patch(
-            f"/organizations/{org_id}/members/{membership_id}/accept",
+            f"/api/v1/organizations/{org_id}/members/{membership_id}/accept",
             headers=_auth(editor_token),
         )
         assert accept_resp.status_code == 200
@@ -349,7 +349,7 @@ async def test_full_rental_journey(
         # Step 9: Editor creates a listing with photos
         # ==================================================================
         listing_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={
                 "name": "Excavator CAT 320",
                 "category_id": category.id,
@@ -377,7 +377,7 @@ async def test_full_rental_journey(
         uploaded_media.append(listing_photo)
 
         attach_resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
             json={"photo_ids": [str(listing_photo.id)]},
             headers=_auth(editor_token),
         )
@@ -387,22 +387,22 @@ async def test_full_rental_journey(
         # Step 10: Editor publishes the listing -> verify in public catalog
         # ==================================================================
         publish_resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers=_auth(editor_token),
         )
         assert publish_resp.status_code == 200
         assert publish_resp.json()["status"] == ListingStatus.PUBLISHED
 
-        catalog_resp = await client.get("/listings/")
+        catalog_resp = await client.get("/api/v1/listings/")
         assert catalog_resp.status_code == 200
-        catalog_ids = [item["id"] for item in catalog_resp.json()]
+        catalog_ids = [item["id"] for item in catalog_resp.json()["items"]]
         assert listing_id in catalog_ids
 
         # ==================================================================
         # Step 11: Renter browses public catalog, finds listing, views detail
         # ==================================================================
-        detail_resp = await client.get(f"/listings/{listing_id}")
+        detail_resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert detail_resp.status_code == 200
         detail = detail_resp.json()
         assert detail["id"] == listing_id
@@ -416,7 +416,7 @@ async def test_full_rental_journey(
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         order_resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start_str,
@@ -435,7 +435,7 @@ async def test_full_rental_journey(
         # Step 13: Editor offers adjusted terms
         # ==================================================================
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order1_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order1_id}/offer",
             json={
                 "offered_cost": "4500.00",
                 "offered_start_date": start_str,
@@ -451,7 +451,7 @@ async def test_full_rental_journey(
         # Step 14: Renter confirms the offer
         # ==================================================================
         confirm_resp = await client.patch(
-            f"/orders/{order1_id}/confirm",
+            f"/api/v1/orders/{order1_id}/confirm",
             headers=_auth(renter_token),
         )
         assert confirm_resp.status_code == 200
@@ -465,7 +465,7 @@ async def test_full_rental_journey(
             start_date.year, start_date.month, start_date.day, tzinfo=datetime.UTC
         )
 
-        get_order_resp = await client.get(f"/orders/{order1_id}", headers=_auth(renter_token))
+        get_order_resp = await client.get(f"/api/v1/orders/{order1_id}", headers=_auth(renter_token))
         assert get_order_resp.status_code == 200
         assert get_order_resp.json()["status"] == OrderStatus.ACTIVE
 
@@ -484,7 +484,7 @@ async def test_full_rental_journey(
             past_end.year, past_end.month, past_end.day, tzinfo=datetime.UTC
         )
 
-        get_finished_resp = await client.get(f"/orders/{order1_id}", headers=_auth(renter_token))
+        get_finished_resp = await client.get(f"/api/v1/orders/{order1_id}", headers=_auth(renter_token))
         assert get_finished_resp.status_code == 200
         assert get_finished_resp.json()["status"] == OrderStatus.FINISHED
 
@@ -500,7 +500,7 @@ async def test_full_rental_journey(
         start2_str, end2_str = _future_dates(days_ahead=20, duration=3)
 
         order2_resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start2_str,
@@ -517,7 +517,7 @@ async def test_full_rental_journey(
         # Step 19: Org editor rejects second order
         # ==================================================================
         reject_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order2_id}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order2_id}/reject",
             headers=_auth(editor_token),
         )
         assert reject_resp.status_code == 200
@@ -529,7 +529,7 @@ async def test_full_rental_journey(
         start3_str, end3_str = _future_dates(days_ahead=30, duration=4)
 
         order3_resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start3_str,
@@ -544,7 +544,7 @@ async def test_full_rental_journey(
 
         # Org offers
         offer3_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order3_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order3_id}/offer",
             json={
                 "offered_cost": "3500.00",
                 "offered_start_date": start3_str,
@@ -557,7 +557,7 @@ async def test_full_rental_journey(
 
         # Renter declines
         decline_resp = await client.patch(
-            f"/orders/{order3_id}/decline",
+            f"/api/v1/orders/{order3_id}/decline",
             headers=_auth(renter_token),
         )
         assert decline_resp.status_code == 200
@@ -568,9 +568,9 @@ async def test_full_rental_journey(
         # ==================================================================
 
         # All orders in expected statuses
-        my_orders_resp = await client.get("/orders/", headers=_auth(renter_token))
+        my_orders_resp = await client.get("/api/v1/orders/", headers=_auth(renter_token))
         assert my_orders_resp.status_code == 200
-        my_orders = my_orders_resp.json()
+        my_orders = my_orders_resp.json()["items"]
         assert len(my_orders) == 3
 
         order_statuses = {o["id"]: o["status"] for o in my_orders}
@@ -584,11 +584,11 @@ async def test_full_rental_journey(
 
         # Members are correct
         members_resp = await client.get(
-            f"/organizations/{org_id}/members",
+            f"/api/v1/organizations/{org_id}/members",
             headers=_auth(owner_token),
         )
         assert members_resp.status_code == 200
-        members = members_resp.json()
+        members = members_resp.json()["items"]
         assert len(members) == 2
         member_roles = {m["user_id"]: m["role"] for m in members}
         assert member_roles[owner_id] == MembershipRole.ADMIN

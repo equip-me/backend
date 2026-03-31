@@ -68,10 +68,10 @@ async def _register(client: httpx.AsyncClient, **overrides: Any) -> tuple[dict[s
         "surname": "Иванов",
     }
     defaults.update(overrides)
-    resp = await client.post("/users/", json=defaults)
+    resp = await client.post("/api/v1/users/", json=defaults)
     assert resp.status_code == 200, resp.text
     token: str = resp.json()["access_token"]
-    me = await client.get("/users/me", headers=_auth(token))
+    me = await client.get("/api/v1/users/me", headers=_auth(token))
     assert me.status_code == 200, me.text
     return me.json(), token
 
@@ -97,7 +97,7 @@ async def _create_org(
     **overrides: Any,
 ) -> dict[str, Any]:
     payload = _org_payload(**overrides)
-    resp = await client.post("/organizations/", json=payload, headers=_auth(token))
+    resp = await client.post("/api/v1/organizations/", json=payload, headers=_auth(token))
     assert resp.status_code == 200, resp.text
     result: dict[str, Any] = resp.json()
     return result
@@ -167,9 +167,9 @@ async def test_create_organization(client: httpx.AsyncClient) -> None:
     assert org["contacts"][0]["display_name"] == "Иван Иванов"
 
     # Verify creator is admin member
-    members_resp = await client.get(f"/organizations/{org['id']}/members", headers=_auth(token))
+    members_resp = await client.get(f"/api/v1/organizations/{org['id']}/members", headers=_auth(token))
     assert members_resp.status_code == 200
-    members = members_resp.json()
+    members = members_resp.json()["items"]
     assert len(members) == 1
     assert members[0]["user_id"] == user["id"]
     assert members[0]["role"] == MembershipRole.ADMIN
@@ -186,7 +186,7 @@ async def test_org_profile_photo(client: httpx.AsyncClient, real_storage: Storag
 
     try:
         resp = await client.patch(
-            f"/organizations/{org['id']}/photo",
+            f"/api/v1/organizations/{org['id']}/photo",
             json={"photo_id": str(media.id)},
             headers=_auth(token),
         )
@@ -196,7 +196,7 @@ async def test_org_profile_photo(client: httpx.AsyncClient, real_storage: Storag
         assert body["photo"]["id"] == str(media.id)
 
         # Photo visible via GET
-        get_resp = await client.get(f"/organizations/{org['id']}")
+        get_resp = await client.get(f"/api/v1/organizations/{org['id']}")
         assert get_resp.status_code == 200
         assert get_resp.json()["photo"]["id"] == str(media.id)
     finally:
@@ -216,7 +216,7 @@ async def test_update_contacts(client: httpx.AsyncClient) -> None:
         ],
     }
     resp = await client.put(
-        f"/organizations/{org['id']}/contacts",
+        f"/api/v1/organizations/{org['id']}/contacts",
         json=new_contacts,
         headers=_auth(token),
     )
@@ -227,7 +227,7 @@ async def test_update_contacts(client: httpx.AsyncClient) -> None:
     assert names == {"New Person", "Another Person"}
 
     # Verify via GET org
-    get_resp = await client.get(f"/organizations/{org['id']}")
+    get_resp = await client.get(f"/api/v1/organizations/{org['id']}")
     assert len(get_resp.json()["contacts"]) == 2
 
 
@@ -237,7 +237,7 @@ async def test_add_payment_details(client: httpx.AsyncClient) -> None:
     org = await _create_org(client, token)
 
     resp = await client.post(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         json=_PAYMENT_DETAILS,
         headers=_auth(token),
     )
@@ -247,7 +247,7 @@ async def test_add_payment_details(client: httpx.AsyncClient) -> None:
     assert body["bank_name"] == _PAYMENT_DETAILS["bank_name"]
 
     get_resp = await client.get(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         headers=_auth(token),
     )
     assert get_resp.status_code == 200
@@ -260,14 +260,14 @@ async def test_update_payment_details(client: httpx.AsyncClient) -> None:
     org = await _create_org(client, token)
 
     await client.post(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         json=_PAYMENT_DETAILS,
         headers=_auth(token),
     )
 
     updated = {**_PAYMENT_DETAILS, "bank_name": "АО Тинькофф Банк"}
     resp = await client.post(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         json=updated,
         headers=_auth(token),
     )
@@ -275,7 +275,7 @@ async def test_update_payment_details(client: httpx.AsyncClient) -> None:
     assert resp.json()["bank_name"] == "АО Тинькофф Банк"
     # Same ID (upsert, not duplicate)
     get_resp = await client.get(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         headers=_auth(token),
     )
     assert get_resp.json()["bank_name"] == "АО Тинькофф Банк"
@@ -291,7 +291,7 @@ async def test_platform_admin_verifies_org(client: httpx.AsyncClient) -> None:
     await _make_platform_admin(admin_user["id"])
 
     resp = await client.patch(
-        f"/private/organizations/{org['id']}/verify",
+        f"/api/v1/private/organizations/{org['id']}/verify",
         headers=_auth(admin_token),
     )
     assert resp.status_code == 200
@@ -309,7 +309,7 @@ async def test_full_setup_journey(client: httpx.AsyncClient, real_storage: Stora
     media = await _create_ready_photo(real_storage, db_user)
     try:
         photo_resp = await client.patch(
-            f"/organizations/{org_id}/photo",
+            f"/api/v1/organizations/{org_id}/photo",
             json={"photo_id": str(media.id)},
             headers=_auth(token),
         )
@@ -317,7 +317,7 @@ async def test_full_setup_journey(client: httpx.AsyncClient, real_storage: Stora
 
         # Contacts
         contacts_resp = await client.put(
-            f"/organizations/{org_id}/contacts",
+            f"/api/v1/organizations/{org_id}/contacts",
             json={"contacts": [{"display_name": "Updated Contact", "phone": "+79001112233"}]},
             headers=_auth(token),
         )
@@ -325,7 +325,7 @@ async def test_full_setup_journey(client: httpx.AsyncClient, real_storage: Stora
 
         # Payment details
         pay_resp = await client.post(
-            f"/organizations/{org_id}/payment-details",
+            f"/api/v1/organizations/{org_id}/payment-details",
             json=_PAYMENT_DETAILS,
             headers=_auth(token),
         )
@@ -335,7 +335,7 @@ async def test_full_setup_journey(client: httpx.AsyncClient, real_storage: Stora
         admin_user, admin_token = await _register(client, email="admin@example.com", phone="+79002223344")
         await _make_platform_admin(admin_user["id"])
         verify_resp = await client.patch(
-            f"/private/organizations/{org_id}/verify",
+            f"/api/v1/private/organizations/{org_id}/verify",
             headers=_auth(admin_token),
         )
         assert verify_resp.status_code == 200
@@ -355,7 +355,7 @@ async def test_invite_member(client: httpx.AsyncClient) -> None:
     invitee, invitee_token = await _register(client, email="invitee@example.com", phone="+79001112233")
 
     invite_resp = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": invitee["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
@@ -366,7 +366,7 @@ async def test_invite_member(client: httpx.AsyncClient) -> None:
 
     # User accepts
     accept_resp = await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(invitee_token),
     )
     assert accept_resp.status_code == 200
@@ -383,7 +383,7 @@ async def test_join_request(client: httpx.AsyncClient) -> None:
     _, joiner_token = await _register(client, email="joiner@example.com", phone="+79001112233")
 
     join_resp = await client.post(
-        f"/organizations/{org['id']}/members/join",
+        f"/api/v1/organizations/{org['id']}/members/join",
         headers=_auth(joiner_token),
     )
     assert join_resp.status_code == 200
@@ -392,7 +392,7 @@ async def test_join_request(client: httpx.AsyncClient) -> None:
 
     # Admin approves with viewer role
     approve_resp = await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/approve",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/approve",
         json={"role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
@@ -411,20 +411,20 @@ async def test_change_member_role(client: httpx.AsyncClient) -> None:
 
     # Invite as viewer
     invite_resp = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": invitee["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     membership = invite_resp.json()
     # Accept
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(invitee_token),
     )
 
     # Change role to editor
     role_resp = await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/role",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/role",
         json={"role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
@@ -440,26 +440,26 @@ async def test_remove_member_by_admin(client: httpx.AsyncClient) -> None:
     invitee, invitee_token = await _register(client, email="member@example.com", phone="+79001112233")
 
     invite_resp = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": invitee["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     membership = invite_resp.json()
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(invitee_token),
     )
 
     # Admin removes member
     del_resp = await client.delete(
-        f"/organizations/{org['id']}/members/{membership['id']}",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}",
         headers=_auth(admin_token),
     )
     assert del_resp.status_code == 204
 
     # Removed user cannot list members anymore
     members_resp = await client.get(
-        f"/organizations/{org['id']}/members",
+        f"/api/v1/organizations/{org['id']}/members",
         headers=_auth(invitee_token),
     )
     assert members_resp.status_code == 403
@@ -473,30 +473,30 @@ async def test_member_leaves_voluntarily(client: httpx.AsyncClient) -> None:
     invitee, invitee_token = await _register(client, email="member@example.com", phone="+79001112233")
 
     invite_resp = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": invitee["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     membership = invite_resp.json()
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(invitee_token),
     )
 
     # Member leaves
     del_resp = await client.delete(
-        f"/organizations/{org['id']}/members/{membership['id']}",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}",
         headers=_auth(invitee_token),
     )
     assert del_resp.status_code == 204
 
     # Verify they're no longer a member
     members_resp = await client.get(
-        f"/organizations/{org['id']}/members",
+        f"/api/v1/organizations/{org['id']}/members",
         headers=_auth(admin_token),
     )
     assert members_resp.status_code == 200
-    member_ids = [m["user_id"] for m in members_resp.json()]
+    member_ids = [m["user_id"] for m in members_resp.json()["items"]]
     assert invitee["id"] not in member_ids
 
 
@@ -510,30 +510,30 @@ async def test_list_members(client: httpx.AsyncClient) -> None:
 
     # Invite user2
     inv2 = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": user2["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv2.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv2.json()['id']}/accept",
         headers=_auth(token2),
     )
 
     # Invite user3
     inv3 = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": user3["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv3.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv3.json()['id']}/accept",
         headers=_auth(token3),
     )
 
     # List members
-    resp = await client.get(f"/organizations/{org['id']}/members", headers=_auth(admin_token))
+    resp = await client.get(f"/api/v1/organizations/{org['id']}/members", headers=_auth(admin_token))
     assert resp.status_code == 200
-    members = resp.json()
+    members = resp.json()["items"]
     assert len(members) == 3
     roles = {m["role"] for m in members}
     assert roles == {MembershipRole.ADMIN, MembershipRole.EDITOR, MembershipRole.VIEWER}
@@ -551,7 +551,7 @@ async def test_duplicate_inn(client: httpx.AsyncClient) -> None:
 
     _, token2 = await _register(client, email="u2@example.com", phone="+79001112233")
     resp = await client.post(
-        "/organizations/",
+        "/api/v1/organizations/",
         json=_org_payload(),
         headers=_auth(token2),
     )
@@ -563,11 +563,11 @@ async def test_invalid_inn_format(client: httpx.AsyncClient) -> None:
     _, token = await _register(client)
 
     # Too short
-    resp = await client.post("/organizations/", json=_org_payload(inn="12345"), headers=_auth(token))
+    resp = await client.post("/api/v1/organizations/", json=_org_payload(inn="12345"), headers=_auth(token))
     assert resp.status_code == 422
 
     # Non-digit
-    resp2 = await client.post("/organizations/", json=_org_payload(inn="abcdefghij"), headers=_auth(token))
+    resp2 = await client.post("/api/v1/organizations/", json=_org_payload(inn="abcdefghij"), headers=_auth(token))
     assert resp2.status_code == 422
 
 
@@ -576,7 +576,7 @@ async def test_missing_contacts_on_creation(client: httpx.AsyncClient) -> None:
     _, token = await _register(client)
 
     resp = await client.post(
-        "/organizations/",
+        "/api/v1/organizations/",
         json={"inn": SBERBANK_INN, "contacts": []},
         headers=_auth(token),
     )
@@ -588,7 +588,7 @@ async def test_invalid_contact_no_phone_email(client: httpx.AsyncClient) -> None
     _, token = await _register(client)
 
     resp = await client.post(
-        "/organizations/",
+        "/api/v1/organizations/",
         json={
             "inn": SBERBANK_INN,
             "contacts": [{"display_name": "No Contact Info"}],
@@ -600,7 +600,7 @@ async def test_invalid_contact_no_phone_email(client: httpx.AsyncClient) -> None
 
 async def test_non_authenticated_creates_org(client: httpx.AsyncClient) -> None:
     """Scenario 18: no auth -> 401."""
-    resp = await client.post("/organizations/", json=_org_payload())
+    resp = await client.post("/api/v1/organizations/", json=_org_payload())
     assert resp.status_code == 401
 
 
@@ -610,7 +610,7 @@ async def test_non_admin_tries_to_verify(client: httpx.AsyncClient) -> None:
     org = await _create_org(client, token)
 
     resp = await client.patch(
-        f"/private/organizations/{org['id']}/verify",
+        f"/api/v1/private/organizations/{org['id']}/verify",
         headers=_auth(token),
     )
     assert resp.status_code == 403
@@ -623,17 +623,17 @@ async def test_non_admin_updates_contacts(client: httpx.AsyncClient) -> None:
 
     viewer, viewer_token = await _register(client, email="viewer@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": viewer["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv.json()['id']}/accept",
         headers=_auth(viewer_token),
     )
 
     resp = await client.put(
-        f"/organizations/{org['id']}/contacts",
+        f"/api/v1/organizations/{org['id']}/contacts",
         json={"contacts": [{"display_name": "Hacker", "phone": "+79001112233"}]},
         headers=_auth(viewer_token),
     )
@@ -647,17 +647,17 @@ async def test_non_admin_adds_payment_details(client: httpx.AsyncClient) -> None
 
     viewer, viewer_token = await _register(client, email="viewer@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": viewer["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv.json()['id']}/accept",
         headers=_auth(viewer_token),
     )
 
     resp = await client.post(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         json=_PAYMENT_DETAILS,
         headers=_auth(viewer_token),
     )
@@ -671,12 +671,12 @@ async def test_org_photo_by_non_admin(client: httpx.AsyncClient, real_storage: S
 
     viewer, viewer_token = await _register(client, email="viewer@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": viewer["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv.json()['id']}/accept",
         headers=_auth(viewer_token),
     )
 
@@ -685,7 +685,7 @@ async def test_org_photo_by_non_admin(client: httpx.AsyncClient, real_storage: S
 
     try:
         resp = await client.patch(
-            f"/organizations/{org['id']}/photo",
+            f"/api/v1/organizations/{org['id']}/photo",
             json={"photo_id": str(media.id)},
             headers=_auth(viewer_token),
         )
@@ -701,7 +701,7 @@ async def test_payment_details_when_none_set(client: httpx.AsyncClient) -> None:
     org = await _create_org(client, token)
 
     resp = await client.get(
-        f"/organizations/{org['id']}/payment-details",
+        f"/api/v1/organizations/{org['id']}/payment-details",
         headers=_auth(token),
     )
     assert resp.status_code == 404
@@ -716,7 +716,7 @@ async def test_unverified_org_listing_visibility(client: httpx.AsyncClient) -> N
 
     # Non-member trying to list members -> 403
     resp = await client.get(
-        f"/organizations/{org['id']}/members",
+        f"/api/v1/organizations/{org['id']}/members",
         headers=_auth(outsider_token),
     )
     assert resp.status_code == 403
@@ -729,18 +729,18 @@ async def test_editor_tries_to_invite(client: httpx.AsyncClient) -> None:
 
     editor, editor_token = await _register(client, email="editor@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": editor["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv.json()['id']}/accept",
         headers=_auth(editor_token),
     )
 
     target, _ = await _register(client, email="target@example.com", phone="+79002223344")
     resp = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": target["id"], "role": MembershipRole.VIEWER},
         headers=_auth(editor_token),
     )
@@ -754,26 +754,26 @@ async def test_viewer_tries_to_approve_candidate(client: httpx.AsyncClient) -> N
 
     viewer, viewer_token = await _register(client, email="viewer@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": viewer["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv.json()['id']}/accept",
         headers=_auth(viewer_token),
     )
 
     # Another user joins as candidate
     _, joiner_token = await _register(client, email="joiner@example.com", phone="+79002223344")
     join_resp = await client.post(
-        f"/organizations/{org['id']}/members/join",
+        f"/api/v1/organizations/{org['id']}/members/join",
         headers=_auth(joiner_token),
     )
     candidate_id = join_resp.json()["id"]
 
     # Viewer tries to approve
     resp = await client.patch(
-        f"/organizations/{org['id']}/members/{candidate_id}/approve",
+        f"/api/v1/organizations/{org['id']}/members/{candidate_id}/approve",
         json={"role": MembershipRole.VIEWER},
         headers=_auth(viewer_token),
     )
@@ -787,18 +787,18 @@ async def test_invite_already_member_user(client: httpx.AsyncClient) -> None:
 
     member, member_token = await _register(client, email="member@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": member["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     await client.patch(
-        f"/organizations/{org['id']}/members/{inv.json()['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{inv.json()['id']}/accept",
         headers=_auth(member_token),
     )
 
     # Try to invite again
     resp = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": member["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
@@ -814,7 +814,7 @@ async def test_user_accepts_invite_meant_for_someone_else(client: httpx.AsyncCli
     _, imposter_token = await _register(client, email="imposter@example.com", phone="+79002223344")
 
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": invitee["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
@@ -822,7 +822,7 @@ async def test_user_accepts_invite_meant_for_someone_else(client: httpx.AsyncCli
 
     # Imposter tries to accept
     resp = await client.patch(
-        f"/organizations/{org['id']}/members/{membership_id}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership_id}/accept",
         headers=_auth(imposter_token),
     )
     assert resp.status_code == 403
@@ -835,20 +835,20 @@ async def test_approve_non_candidate_status(client: httpx.AsyncClient) -> None:
 
     invitee, invitee_token = await _register(client, email="invitee@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": invitee["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     membership = inv.json()
     # Accept first
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(invitee_token),
     )
 
     # Try to approve an already-member
     resp = await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/approve",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/approve",
         json={"role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
@@ -862,14 +862,14 @@ async def test_accept_non_invited_status(client: httpx.AsyncClient) -> None:
 
     _, joiner_token = await _register(client, email="joiner@example.com", phone="+79001112233")
     join_resp = await client.post(
-        f"/organizations/{org['id']}/members/join",
+        f"/api/v1/organizations/{org['id']}/members/join",
         headers=_auth(joiner_token),
     )
     candidate_membership = join_resp.json()
 
     # Try to accept a candidate membership (should fail, it's not invited)
     resp = await client.patch(
-        f"/organizations/{org['id']}/members/{candidate_membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{candidate_membership['id']}/accept",
         headers=_auth(joiner_token),
     )
     assert resp.status_code == 400
@@ -882,31 +882,31 @@ async def test_non_admin_changes_member_role(client: httpx.AsyncClient) -> None:
 
     editor, editor_token = await _register(client, email="editor@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": editor["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     membership = inv.json()
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(editor_token),
     )
 
     viewer, viewer_token = await _register(client, email="viewer@example.com", phone="+79002223344")
     inv2 = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": viewer["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     membership2 = inv2.json()
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership2['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership2['id']}/accept",
         headers=_auth(viewer_token),
     )
 
     # Editor tries to change viewer's role
     resp = await client.patch(
-        f"/organizations/{org['id']}/members/{membership2['id']}/role",
+        f"/api/v1/organizations/{org['id']}/members/{membership2['id']}/role",
         json={"role": MembershipRole.EDITOR},
         headers=_auth(editor_token),
     )
@@ -920,31 +920,31 @@ async def test_non_admin_removes_another_member(client: httpx.AsyncClient) -> No
 
     editor, editor_token = await _register(client, email="editor@example.com", phone="+79001112233")
     inv = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": editor["id"], "role": MembershipRole.EDITOR},
         headers=_auth(admin_token),
     )
     membership = inv.json()
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership['id']}/accept",
         headers=_auth(editor_token),
     )
 
     viewer, viewer_token = await _register(client, email="viewer@example.com", phone="+79002223344")
     inv2 = await client.post(
-        f"/organizations/{org['id']}/members/invite",
+        f"/api/v1/organizations/{org['id']}/members/invite",
         json={"user_id": viewer["id"], "role": MembershipRole.VIEWER},
         headers=_auth(admin_token),
     )
     membership2 = inv2.json()
     await client.patch(
-        f"/organizations/{org['id']}/members/{membership2['id']}/accept",
+        f"/api/v1/organizations/{org['id']}/members/{membership2['id']}/accept",
         headers=_auth(viewer_token),
     )
 
     # Editor tries to remove viewer
     resp = await client.delete(
-        f"/organizations/{org['id']}/members/{membership2['id']}",
+        f"/api/v1/organizations/{org['id']}/members/{membership2['id']}",
         headers=_auth(editor_token),
     )
     assert resp.status_code == 403

@@ -42,10 +42,10 @@ async def _register(client: httpx.AsyncClient, **overrides: Any) -> tuple[dict[s
         "surname": "Иванов",
     }
     defaults.update(overrides)
-    resp = await client.post("/users/", json=defaults)
+    resp = await client.post("/api/v1/users/", json=defaults)
     assert resp.status_code == 200, resp.text
     token: str = resp.json()["access_token"]
-    me = await client.get("/users/me", headers=_auth(token))
+    me = await client.get("/api/v1/users/me", headers=_auth(token))
     assert me.status_code == 200, me.text
     return me.json(), token
 
@@ -61,7 +61,7 @@ async def _create_verified_org(client: httpx.AsyncClient, token: str, *, inn: st
             },
         ],
     }
-    resp = await client.post("/organizations/", json=payload, headers=_auth(token))
+    resp = await client.post("/api/v1/organizations/", json=payload, headers=_auth(token))
     assert resp.status_code == 200, resp.text
     org: dict[str, Any] = resp.json()
     await Organization.filter(id=org["id"]).update(status="verified")
@@ -77,7 +77,7 @@ async def _create_published_listing(
 ) -> dict[str, Any]:
     cat = await ListingCategory.create(name="Test Category", verified=True)
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator CAT 320",
             "category_id": cat.id,
@@ -90,7 +90,7 @@ async def _create_published_listing(
     listing = resp.json()
 
     patch_resp = await client.patch(
-        f"/organizations/{org_id}/listings/{listing['id']}/status",
+        f"/api/v1/organizations/{org_id}/listings/{listing['id']}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
@@ -138,7 +138,7 @@ async def _create_order(
     """Create an order and return (order_id, start_str, end_str)."""
     start_str, end_str = _future_dates(days_ahead=days_ahead, duration=duration)
     resp = await client.post(
-        "/orders/",
+        "/api/v1/orders/",
         json={
             "listing_id": listing_id,
             "requested_start_date": start_str,
@@ -160,7 +160,7 @@ async def _advance_to_offered(
 ) -> None:
     """Move order from pending to offered."""
     resp = await client.patch(
-        f"/organizations/{org_id}/orders/{order_id}/offer",
+        f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
         json={
             "offered_cost": "4500.00",
             "offered_start_date": start_str,
@@ -183,7 +183,7 @@ async def _advance_to_confirmed(
 ) -> None:
     """Move order from pending to confirmed."""
     await _advance_to_offered(client, org_id, org_token, order_id, start_str, end_str)
-    resp = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+    resp = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
     assert resp.status_code == 200, resp.text
     assert resp.json()["status"] == OrderStatus.CONFIRMED
 
@@ -205,7 +205,7 @@ async def _advance_to_active(
         start_date.year, start_date.month, start_date.day, tzinfo=datetime.UTC
     )
     # Trigger auto-transition by reading the order
-    get_resp = await client.get(f"/orders/{order_id}", headers=_auth(renter_token))
+    get_resp = await client.get(f"/api/v1/orders/{order_id}", headers=_auth(renter_token))
     assert get_resp.status_code == 200, get_resp.text
     assert get_resp.json()["status"] == OrderStatus.ACTIVE
 
@@ -224,7 +224,7 @@ class TestCancelRejectDeclineHappyPaths:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/reject",
             headers=_auth(org_token),
         )
         assert resp.status_code == 200
@@ -232,7 +232,7 @@ class TestCancelRejectDeclineHappyPaths:
 
         # Verify terminal: cannot offer after rejection
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
@@ -244,12 +244,12 @@ class TestCancelRejectDeclineHappyPaths:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
         await _advance_to_offered(client, org_id, org_token, order_id, start_str, end_str)
 
-        resp = await client.patch(f"/orders/{order_id}/decline", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/decline", headers=_auth(renter_token))
         assert resp.status_code == 200
         assert resp.json()["status"] == OrderStatus.DECLINED
 
         # Verify terminal: cannot confirm after decline
-        confirm_resp = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+        confirm_resp = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
         assert confirm_resp.status_code == 400
 
     async def test_user_cancels_confirmed_order(self, client: httpx.AsyncClient) -> None:
@@ -258,7 +258,7 @@ class TestCancelRejectDeclineHappyPaths:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
         await _advance_to_confirmed(client, org_id, org_token, renter_token, order_id, start_str, end_str)
 
-        resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp.status_code == 200
         assert resp.json()["status"] == OrderStatus.CANCELED_BY_USER
 
@@ -272,7 +272,7 @@ class TestCancelRejectDeclineHappyPaths:
         listing_obj = await Listing.get(id=listing_id)
         assert listing_obj.status == ListingStatus.IN_RENT
 
-        resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp.status_code == 200
         assert resp.json()["status"] == OrderStatus.CANCELED_BY_USER
 
@@ -287,7 +287,7 @@ class TestCancelRejectDeclineHappyPaths:
         await _advance_to_confirmed(client, org_id, org_token, renter_token, order_id, start_str, end_str)
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert resp.status_code == 200
@@ -304,7 +304,7 @@ class TestCancelRejectDeclineHappyPaths:
         assert listing_obj.status == ListingStatus.IN_RENT
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert resp.status_code == 200
@@ -330,7 +330,7 @@ class TestCancelRejectDeclineNegativeCases:
         await _advance_to_offered(client, org_id, org_token, order_id, start_str, end_str)
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/reject",
             headers=_auth(org_token),
         )
         assert resp.status_code == 400
@@ -340,7 +340,7 @@ class TestCancelRejectDeclineNegativeCases:
         listing_id, _org_id, _org_token, _, renter_token = await _setup_order_env(client)
         order_id, _start_str, _end_str = await _create_order(client, listing_id, renter_token)
 
-        resp = await client.patch(f"/orders/{order_id}/decline", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/decline", headers=_auth(renter_token))
         assert resp.status_code == 400
 
     async def test_decline_non_offered_confirmed(self, client: httpx.AsyncClient) -> None:
@@ -349,7 +349,7 @@ class TestCancelRejectDeclineNegativeCases:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
         await _advance_to_confirmed(client, org_id, org_token, renter_token, order_id, start_str, end_str)
 
-        resp = await client.patch(f"/orders/{order_id}/decline", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/decline", headers=_auth(renter_token))
         assert resp.status_code == 400
 
     async def test_user_cancel_from_pending(self, client: httpx.AsyncClient) -> None:
@@ -357,7 +357,7 @@ class TestCancelRejectDeclineNegativeCases:
         listing_id, _org_id, _org_token, _, renter_token = await _setup_order_env(client)
         order_id, _start_str, _end_str = await _create_order(client, listing_id, renter_token)
 
-        resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp.status_code == 400
 
     async def test_user_cancel_from_offered(self, client: httpx.AsyncClient) -> None:
@@ -366,7 +366,7 @@ class TestCancelRejectDeclineNegativeCases:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
         await _advance_to_offered(client, org_id, org_token, order_id, start_str, end_str)
 
-        resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp.status_code == 400
 
     async def test_org_cancel_from_pending(self, client: httpx.AsyncClient) -> None:
@@ -375,7 +375,7 @@ class TestCancelRejectDeclineNegativeCases:
         order_id, _start_str, _end_str = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert resp.status_code == 400
@@ -387,7 +387,7 @@ class TestCancelRejectDeclineNegativeCases:
         await _advance_to_offered(client, org_id, org_token, order_id, start_str, end_str)
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert resp.status_code == 400
@@ -399,17 +399,17 @@ class TestCancelRejectDeclineNegativeCases:
         await _advance_to_confirmed(client, org_id, org_token, renter_token, order_id, start_str, end_str)
 
         # Cancel by user
-        resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp.status_code == 200
         assert resp.json()["status"] == OrderStatus.CANCELED_BY_USER
 
         # Try to cancel again by user
-        resp2 = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        resp2 = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp2.status_code == 400
 
         # Try to cancel by org
         resp3 = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert resp3.status_code == 400
@@ -428,17 +428,17 @@ class TestCancelRejectDeclineNegativeCases:
         )
 
         # Read order to trigger auto-transition to finished
-        get_resp = await client.get(f"/orders/{order_id}", headers=_auth(renter_token))
+        get_resp = await client.get(f"/api/v1/orders/{order_id}", headers=_auth(renter_token))
         assert get_resp.status_code == 200
         assert get_resp.json()["status"] == OrderStatus.FINISHED
 
         # Try to cancel by user
-        cancel_resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        cancel_resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert cancel_resp.status_code == 400
 
         # Try to cancel by org
         org_cancel_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert org_cancel_resp.status_code == 400
@@ -453,7 +453,7 @@ class TestCancelRejectDeclineNegativeCases:
         _, stranger_token = await _register(
             client, email="stranger@example.com", phone="+79009998877", name="S", surname="T"
         )
-        cancel_resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(stranger_token))
+        cancel_resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(stranger_token))
         assert cancel_resp.status_code == 403
 
     async def test_wrong_org_cancels(self, client: httpx.AsyncClient) -> None:
@@ -468,7 +468,7 @@ class TestCancelRejectDeclineNegativeCases:
         other_org_id = other_org["id"]
 
         cancel_resp = await client.patch(
-            f"/organizations/{other_org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{other_org_id}/orders/{order_id}/cancel",
             headers=_auth(other_org_token),
         )
         assert cancel_resp.status_code == 404

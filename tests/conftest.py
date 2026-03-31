@@ -80,10 +80,10 @@ def _default_user_data(**overrides: Any) -> dict[str, Any]:
 async def create_user(client: AsyncClient) -> Any:
     async def _create(**overrides: Any) -> tuple[dict[str, Any], str]:
         data = _default_user_data(**overrides)
-        resp = await client.post("/users/", json=data)
+        resp = await client.post("/api/v1/users/", json=data)
         assert resp.status_code == 200
         token = resp.json()["access_token"]
-        me_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+        me_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
         return me_resp.json(), token
 
     return _create
@@ -130,7 +130,7 @@ async def create_organization(client: AsyncClient, create_user: Any) -> Any:
             _, token = await create_user(email="orgcreator@example.com")
         data = _default_org_data(**overrides)
         resp = await client.post(
-            "/organizations/",
+            "/api/v1/organizations/",
             json=data,
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -188,7 +188,7 @@ async def create_listing(
     category_id = seed_categories[0].id
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator CAT 320",
             "category_id": category_id,
@@ -201,7 +201,7 @@ async def create_listing(
     listing_id = resp.json()["id"]
 
     patch_resp = await client.patch(
-        f"/organizations/{org_id}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
         json={"status": "published"},
         headers={"Authorization": f"Bearer {org_token}"},
     )

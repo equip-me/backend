@@ -122,11 +122,12 @@ The system uses a layered permission model. Each level builds on the previous:
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/users/` | Public | Register new user |
-| GET | `/users/{user_id}` | Public | Get user by ID |
-| GET | `/users/me` | Authenticated | Get current user profile |
-| PATCH | `/users/me` | Authenticated | Update current user |
-| PATCH | `/private/users/{user_id}/role` | Platform Admin | Change user role (including suspend/unsuspend) |
+| POST | `/api/v1/users/` | Public | Register new user |
+| GET | `/api/v1/users/{user_id}` | Public | Get user by ID |
+| GET | `/api/v1/users/me` | Authenticated | Get current user profile |
+| PATCH | `/api/v1/users/me` | Authenticated | Update current user |
+| PATCH | `/api/v1/private/users/{user_id}/role` | Platform Admin | Change user role (including suspend/unsuspend) |
+| GET | `/api/v1/private/users/` | Platform Admin | List all users (paginated, searchable, role filter) |
 
 ---
 
@@ -219,13 +220,13 @@ Unique constraint: `(user, organization)` — a user can have at most one member
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/organizations/{org_id}/members/invite` | Org Admin | Invite a user for a role |
-| POST | `/organizations/{org_id}/members/join` | Authenticated | Request to join |
-| PATCH | `/organizations/{org_id}/members/{id}/approve` | Org Admin | Approve candidate (admin assigns role in body) |
-| PATCH | `/organizations/{org_id}/members/{id}/accept` | Authenticated (invited user) | Accept invitation |
-| PATCH | `/organizations/{org_id}/members/{id}/role` | Org Admin | Change member role |
-| DELETE | `/organizations/{org_id}/members/{id}` | Org Admin or Self | Remove member, cancel request, or decline invite |
-| GET | `/organizations/{org_id}/members` | Org Member (any role) | List members |
+| POST | `/api/v1/organizations/{org_id}/members/invite` | Org Admin | Invite a user for a role |
+| POST | `/api/v1/organizations/{org_id}/members/join` | Authenticated | Request to join |
+| PATCH | `/api/v1/organizations/{org_id}/members/{id}/approve` | Org Admin | Approve candidate (admin assigns role in body) |
+| PATCH | `/api/v1/organizations/{org_id}/members/{id}/accept` | Authenticated (invited user) | Accept invitation |
+| PATCH | `/api/v1/organizations/{org_id}/members/{id}/role` | Org Admin | Change member role |
+| DELETE | `/api/v1/organizations/{org_id}/members/{id}` | Org Admin or Self | Remove member, cancel request, or decline invite |
+| GET | `/api/v1/organizations/{org_id}/members` | Org Member (any role) | List members |
 
 ### 3.3 Organization Creation
 
@@ -281,13 +282,14 @@ Payment details are added to an organization after creation via a dedicated endp
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/organizations/` | Authenticated | Create organization with contacts (creator becomes admin member) |
-| GET | `/organizations/{id}` | Public | Get organization by ID |
-| GET | `/users/me/organizations` | Authenticated | List organizations the current user belongs to |
-| PUT | `/organizations/{org_id}/contacts` | Org Admin | Replace all contacts with a new list |
-| GET | `/organizations/{org_id}/payment-details` | Org Member | Get payment details (404 if not set) |
-| POST | `/organizations/{org_id}/payment-details` | Org Admin | Create or replace payment details |
-| PATCH | `/private/organizations/{id}/verify` | Platform Admin | Verify organization |
+| POST | `/api/v1/organizations/` | Authenticated | Create organization with contacts (creator becomes admin member) |
+| GET | `/api/v1/organizations/` | Public | List verified organizations with published listing count |
+| GET | `/api/v1/organizations/{id}` | Public | Get organization by ID |
+| GET | `/api/v1/users/me/organizations` | Authenticated | List organizations the current user belongs to |
+| PUT | `/api/v1/organizations/{org_id}/contacts` | Org Admin | Replace all contacts with a new list |
+| GET | `/api/v1/organizations/{org_id}/payment-details` | Org Member | Get payment details (404 if not set) |
+| POST | `/api/v1/organizations/{org_id}/payment-details` | Org Admin | Create or replace payment details |
+| PATCH | `/api/v1/private/organizations/{id}/verify` | Platform Admin | Verify organization |
 
 ---
 
@@ -385,16 +387,16 @@ Listings from unverified organizations are invisible to non-members. Direct acce
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/organizations/{org_id}/listings/` | Org Editor | Create listing |
-| PATCH | `/organizations/{org_id}/listings/{id}` | Org Editor | Update listing |
-| DELETE | `/organizations/{org_id}/listings/{id}` | Org Editor | Delete listing |
-| PATCH | `/organizations/{org_id}/listings/{id}/status` | Org Editor | Change listing status |
-| GET | `/organizations/{org_id}/listings/` | Org Member | List organization's listings |
-| GET | `/listings/` | Public | Browse published listings (verified orgs only) |
-| GET | `/listings/{id}` | Public | Get single listing |
-| GET | `/listings/categories/` | Public | List verified (global) categories |
-| GET | `/organizations/{org_id}/listings/categories/` | Org Member | List org's categories (including global) |
-| POST | `/organizations/{org_id}/listings/categories/` | Org Editor | Create category for the organization |
+| POST | `/api/v1/organizations/{org_id}/listings/` | Org Editor | Create listing |
+| PATCH | `/api/v1/organizations/{org_id}/listings/{id}` | Org Editor | Update listing |
+| DELETE | `/api/v1/organizations/{org_id}/listings/{id}` | Org Editor | Delete listing |
+| PATCH | `/api/v1/organizations/{org_id}/listings/{id}/status` | Org Editor | Change listing status |
+| GET | `/api/v1/organizations/{org_id}/listings/` | Org Member | List organization's listings |
+| GET | `/api/v1/listings/` | Public | Browse published listings (verified orgs only) |
+| GET | `/api/v1/listings/{id}` | Public | Get single listing |
+| GET | `/api/v1/listings/categories/` | Public | List verified (global) categories |
+| GET | `/api/v1/organizations/{org_id}/listings/categories/` | Org Member | List org's categories (including global) |
+| POST | `/api/v1/organizations/{org_id}/listings/categories/` | Org Editor | Create category for the organization |
 
 ---
 
@@ -522,22 +524,22 @@ Each order should have a dedicated chat room between the renter and the organiza
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/orders/` | Authenticated | Place order for a listing |
-| GET | `/orders/` | Authenticated | List my orders |
-| GET | `/orders/{id}` | Authenticated (requester) | Get order detail |
-| PATCH | `/orders/{id}/confirm` | Authenticated (requester) | Accept the offered terms |
-| PATCH | `/orders/{id}/decline` | Authenticated (requester) | Decline the offered terms |
-| PATCH | `/orders/{id}/cancel` | Authenticated (requester) | Cancel confirmed/active order |
+| POST | `/api/v1/orders/` | Authenticated | Place order for a listing |
+| GET | `/api/v1/orders/` | Authenticated | List my orders |
+| GET | `/api/v1/orders/{id}` | Authenticated (requester) | Get order detail |
+| PATCH | `/api/v1/orders/{id}/confirm` | Authenticated (requester) | Accept the offered terms |
+| PATCH | `/api/v1/orders/{id}/decline` | Authenticated (requester) | Decline the offered terms |
+| PATCH | `/api/v1/orders/{id}/cancel` | Authenticated (requester) | Cancel confirmed/active order |
 
 **Organization (owner) endpoints:**
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| GET | `/organizations/{org_id}/orders/` | Org Editor | List incoming orders |
-| GET | `/organizations/{org_id}/orders/{id}` | Org Editor | Get order detail |
-| PATCH | `/organizations/{org_id}/orders/{id}/offer` | Org Editor | Accept and offer terms (cost, dates) |
-| PATCH | `/organizations/{org_id}/orders/{id}/reject` | Org Editor | Reject order |
-| PATCH | `/organizations/{org_id}/orders/{id}/cancel` | Org Editor | Cancel confirmed/active order |
+| GET | `/api/v1/organizations/{org_id}/orders/` | Org Editor | List incoming orders |
+| GET | `/api/v1/organizations/{org_id}/orders/{id}` | Org Editor | Get order detail |
+| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/offer` | Org Editor | Accept and offer terms (cost, dates) |
+| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/reject` | Org Editor | Reject order |
+| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/cancel` | Org Editor | Cancel confirmed/active order |
 
 ---
 
@@ -657,12 +659,12 @@ Setting a new profile photo for a User or Organization replaces the existing one
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
-| POST | `/media/upload-url` | Authenticated | Request presigned S3 PUT URL; creates Media record |
-| POST | `/media/{id}/confirm` | Uploader | Confirm upload complete; trigger processing |
-| GET | `/media/{id}/status` | Uploader | Poll processing status |
-| DELETE | `/media/{id}` | Uploader | Delete media record and S3 objects |
-| POST | `/media/{id}/retry` | Uploader | Re-enqueue processing for a failed media |
-| PATCH | `/organizations/{id}/photo` | Org Admin | Attach a ready photo as the organization's profile photo |
+| POST | `/api/v1/media/upload-url` | Authenticated | Request presigned S3 PUT URL; creates Media record |
+| POST | `/api/v1/media/{id}/confirm` | Uploader | Confirm upload complete; trigger processing |
+| GET | `/api/v1/media/{id}/status` | Uploader | Poll processing status |
+| DELETE | `/api/v1/media/{id}` | Uploader | Delete media record and S3 objects |
+| POST | `/api/v1/media/{id}/retry` | Uploader | Re-enqueue processing for a failed media |
+| PATCH | `/api/v1/organizations/{id}/photo` | Org Admin | Attach a ready photo as the organization's profile photo |
 
 ---
 

@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from dadata import Dadata
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from app.core.enums import MembershipRole, MembershipStatus, OrganizationStatus
@@ -16,6 +17,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
 )
 from app.core.identifiers import create_with_short_id
+from app.core.pagination import CursorParams, PaginatedResponse, paginate
 from app.observability.events import emit_event
 from app.observability.metrics import dadata_duration, dadata_requests
 from app.observability.tracing import traced
@@ -126,12 +128,29 @@ async def get_organization(org_id: str) -> OrganizationRead:
 
 
 @traced
-async def list_user_organizations(user: User) -> list[OrganizationRead]:
-    memberships = await Membership.filter(
+async def list_user_organizations(
+    user: User,
+    params: CursorParams,
+) -> tuple[list[Organization], str | None, bool]:
+    qs = Membership.filter(
         user=user,
         status=MembershipStatus.MEMBER,
     ).prefetch_related("organization__contacts")
-    return [OrganizationRead.model_validate(m.organization) for m in memberships]
+
+    items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
+    orgs = [m.organization for m in items]
+    return orgs, next_cursor, has_more
+
+
+@traced
+async def list_public_organizations(
+    params: CursorParams,
+    search: str | None = None,
+) -> tuple[list[Organization], str | None, bool]:
+    qs = Organization.filter(status=OrganizationStatus.VERIFIED)
+    if search:
+        qs = qs.filter(Q(short_name__icontains=search) | Q(full_name__icontains=search))
+    return await paginate(qs, params, ordering=("-created_at", "-id"))
 
 
 @traced
@@ -296,9 +315,14 @@ async def remove_member(org_id: str, member_id: str, user: User) -> None:
 
 
 @traced
-async def list_members(org_id: str) -> list[MembershipRead]:
-    members = await Membership.filter(organization_id=org_id)
-    return [MembershipRead.model_validate(m) for m in members]
+async def list_members(
+    org_id: str,
+    params: CursorParams,
+) -> PaginatedResponse[MembershipRead]:
+    qs = Membership.filter(organization_id=org_id)
+    items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
+    member_reads = [MembershipRead.model_validate(m) for m in items]
+    return PaginatedResponse(items=member_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @traced

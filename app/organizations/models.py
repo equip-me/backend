@@ -19,6 +19,7 @@ class Organization(Model):
     main_activity = fields.CharField(max_length=255, null=True)
     dadata_response: Any = fields.JSONField(null=True)
     status = fields.CharEnumField(OrganizationStatus, default=OrganizationStatus.CREATED, max_length=20)
+    created_at = fields.DatetimeField(auto_now_add=True)
 
     class Meta:
         table = "organizations"

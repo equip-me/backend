@@ -11,10 +11,10 @@ from app.media.schemas import MediaStatusResponse, UploadUrlRequest, UploadUrlRe
 from app.media.storage import StorageClient, get_storage
 from app.users.models import User
 
-router = APIRouter(tags=["media"])
+router = APIRouter(prefix="/api/v1/media", tags=["Media"])
 
 
-@router.post("/media/upload-url", response_model=UploadUrlResponse)
+@router.post("/upload-url", response_model=UploadUrlResponse)
 async def request_upload_url(
     data: UploadUrlRequest,
     user: Annotated[User, Depends(require_active_user)],
@@ -23,7 +23,7 @@ async def request_upload_url(
     return await service.request_upload_url(data, user, storage)
 
 
-@router.get("/media/{media_id}/status", response_model=MediaStatusResponse)
+@router.get("/{media_id}/status", response_model=MediaStatusResponse)
 async def get_media_status(
     media: Annotated[Media, Depends(require_media_uploader)],
 ) -> MediaStatusResponse:
@@ -37,7 +37,7 @@ async def get_media_status(
     )
 
 
-@router.delete("/media/{media_id}", status_code=204)
+@router.delete("/{media_id}", status_code=204)
 async def delete_media(
     media: Annotated[Media, Depends(require_media_uploader)],
     storage: Annotated[StorageClient, Depends(get_storage)],
@@ -46,7 +46,7 @@ async def delete_media(
     return Response(status_code=204)
 
 
-@router.post("/media/{media_id}/confirm", response_model=MediaStatusResponse)
+@router.post("/{media_id}/confirm", response_model=MediaStatusResponse)
 async def confirm_upload(
     media: Annotated[Media, Depends(require_media_uploader)],
     storage: Annotated[StorageClient, Depends(get_storage)],
@@ -62,7 +62,7 @@ async def confirm_upload(
     )
 
 
-@router.post("/media/{media_id}/retry", response_model=MediaStatusResponse)
+@router.post("/{media_id}/retry", response_model=MediaStatusResponse)
 async def retry_media(
     media: Annotated[Media, Depends(require_media_uploader)],
 ) -> MediaStatusResponse:
