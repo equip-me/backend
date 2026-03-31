@@ -297,7 +297,7 @@ async def test_publish_listing(client: httpx.AsyncClient) -> None:
     # Appears in public catalog
     catalog_resp = await client.get("/api/v1/listings/")
     assert catalog_resp.status_code == 200
-    listings = catalog_resp.json()
+    listings = catalog_resp.json()["items"]
     assert any(item["id"] == listing_id for item in listings)
 
 
@@ -332,7 +332,7 @@ async def test_hide_listing(client: httpx.AsyncClient) -> None:
 
     # Disappears from public catalog
     catalog_resp = await client.get("/api/v1/listings/")
-    listings = catalog_resp.json()
+    listings = catalog_resp.json()["items"]
     assert not any(item["id"] == listing_id for item in listings)
 
 
@@ -364,7 +364,7 @@ async def test_archive_listing(client: httpx.AsyncClient) -> None:
     assert archive_resp.json()["status"] == ListingStatus.ARCHIVED
 
     catalog_resp = await client.get("/api/v1/listings/")
-    listings = catalog_resp.json()
+    listings = catalog_resp.json()["items"]
     assert not any(item["id"] == listing_id for item in listings)
 
 
@@ -637,14 +637,14 @@ async def test_public_catalog_browsing(client: httpx.AsyncClient) -> None:
     # Filter by category_a
     cat_a_resp = await client.get(f"/api/v1/listings/?category_id={cat_a.id}")
     assert cat_a_resp.status_code == 200
-    cat_a_listings = cat_a_resp.json()
+    cat_a_listings = cat_a_resp.json()["items"]
     assert len(cat_a_listings) == 2
     assert all(item["category"]["id"] == cat_a.id for item in cat_a_listings)
 
     # Filter by org2
     org2_resp = await client.get(f"/api/v1/listings/?organization_id={org2['id']}")
     assert org2_resp.status_code == 200
-    org2_listings = org2_resp.json()
+    org2_listings = org2_resp.json()["items"]
     assert len(org2_listings) == 1
     assert org2_listings[0]["organization_id"] == org2["id"]
 
@@ -653,7 +653,7 @@ async def test_public_catalog_browsing(client: httpx.AsyncClient) -> None:
         f"/api/v1/listings/?category_id={cat_a.id}&organization_id={org1['id']}",
     )
     assert combined_resp.status_code == 200
-    combined = combined_resp.json()
+    combined = combined_resp.json()["items"]
     assert len(combined) == 1
     assert combined[0]["name"] == "O1-A"
 
@@ -763,7 +763,7 @@ async def test_listing_in_unverified_org_not_public(client: httpx.AsyncClient) -
     # Should not appear in public catalog
     catalog_resp = await client.get("/api/v1/listings/")
     assert catalog_resp.status_code == 200
-    assert not any(item["id"] == listing_id for item in catalog_resp.json())
+    assert not any(item["id"] == listing_id for item in catalog_resp.json()["items"])
 
 
 async def test_non_member_views_listing_from_unverified_org(client: httpx.AsyncClient) -> None:
@@ -946,7 +946,7 @@ async def test_public_catalog_excludes_hidden_archived(client: httpx.AsyncClient
 
     catalog_resp = await client.get("/api/v1/listings/")
     assert catalog_resp.status_code == 200
-    catalog_ids = [item["id"] for item in catalog_resp.json()]
+    catalog_ids = [item["id"] for item in catalog_resp.json()["items"]]
     assert listing_ids["Published Item"] in catalog_ids
     assert listing_ids["Hidden Item"] not in catalog_ids
     assert listing_ids["Archived Item"] not in catalog_ids

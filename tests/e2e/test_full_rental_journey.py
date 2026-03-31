@@ -396,7 +396,7 @@ async def test_full_rental_journey(
 
         catalog_resp = await client.get("/api/v1/listings/")
         assert catalog_resp.status_code == 200
-        catalog_ids = [item["id"] for item in catalog_resp.json()]
+        catalog_ids = [item["id"] for item in catalog_resp.json()["items"]]
         assert listing_id in catalog_ids
 
         # ==================================================================
