@@ -458,7 +458,7 @@ class TestListOrgListings:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 3
+        assert len(resp.json()["items"]) == 3
 
     async def test_list_org_listings_requires_membership(
         self,
@@ -527,7 +527,7 @@ class TestPublicListings:
         resp = await client.get("/api/v1/listings/")
         assert resp.status_code == 200
         body = resp.json()
-        names = [item["name"] for item in body]
+        names = [item["name"] for item in body["items"]]
         assert "Visible" in names
         assert "Invisible" not in names
         assert "Hidden" not in names
@@ -564,8 +564,8 @@ class TestPublicListings:
         )
         resp = await client.get(f"/api/v1/listings/?category_id={seed_categories[0].id}")
         body = resp.json()
-        assert len(body) == 1
-        assert body[0]["name"] == "Cat0"
+        assert len(body["items"]) == 1
+        assert body["items"][0]["name"] == "Cat0"
 
     async def test_public_listings_filter_by_org(
         self,
@@ -588,8 +588,36 @@ class TestPublicListings:
         )
         resp = await client.get(f"/api/v1/listings/?organization_id={org_id}")
         body = resp.json()
-        assert len(body) == 1
-        assert body[0]["organization_id"] == org_id
+        assert len(body["items"]) == 1
+        assert body["items"][0]["organization_id"] == org_id
+
+
+class TestPublicListingsSearch:
+    async def test_search_by_name(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        for name in ["Excavator CAT", "Crane Liebherr", "Bulldozer"]:
+            create_resp = await client.post(
+                f"/api/v1/organizations/{org_id}/listings/",
+                json={"name": name, "category_id": seed_categories[0].id, "price": 100.0},
+                headers=headers,
+            )
+            lid = create_resp.json()["id"]
+            await client.patch(
+                f"/api/v1/organizations/{org_id}/listings/{lid}/status",
+                json={"status": "published"},
+                headers=headers,
+            )
+        resp = await client.get("/api/v1/listings/?search=Excavator")
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "Excavator CAT"
 
 
 class TestGetListing:

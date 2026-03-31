@@ -3,6 +3,7 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 
+from app.core.pagination import CursorParams, PaginatedResponse
 from app.listings import service
 from app.listings.dependencies import get_category_filter, get_org_filter, resolve_listing, resolve_public_listing
 from app.listings.models import Listing
@@ -70,24 +71,31 @@ async def change_listing_status(
     return await service.change_listing_status(listing, data.status, storage)
 
 
-@router.get("/organizations/{org_id}/listings/", response_model=list[ListingRead])
+@router.get("/organizations/{org_id}/listings/", response_model=PaginatedResponse[ListingRead])
 async def list_org_listings(
     org_id: str,
     _membership: Annotated[Membership, Depends(require_org_member)],
     storage: Annotated[StorageClient, Depends(get_storage)],
-) -> list[ListingRead]:
-    """List all listings for an organization (all statuses). Requires org membership."""
-    return await service.list_org_listings(org_id, storage)
+    cursor: str | None = None,
+    limit: int = 20,
+) -> PaginatedResponse[ListingRead]:
+    """List all listings for the organization regardless of status. Org members only."""
+    params = CursorParams(cursor=cursor, limit=limit)
+    return await service.list_org_listings(org_id, storage, params)
 
 
-@router.get("/listings/", response_model=list[ListingRead])
+@router.get("/listings/", response_model=PaginatedResponse[ListingRead])
 async def list_public_listings(
     category_id: Annotated[str | None, Depends(get_category_filter)],
     organization_id: Annotated[str | None, Depends(get_org_filter)],
     storage: Annotated[StorageClient, Depends(get_storage)],
-) -> list[ListingRead]:
-    """List publicly visible listings from verified organizations. Supports category and org filters."""
-    return await service.list_public_listings(storage, category_id, organization_id)
+    cursor: str | None = None,
+    limit: int = 20,
+    search: str | None = None,
+) -> PaginatedResponse[ListingRead]:
+    """Browse published listings from verified organizations only."""
+    params = CursorParams(cursor=cursor, limit=limit)
+    return await service.list_public_listings(storage, params, category_id, organization_id, search)
 
 
 @router.get("/listings/{listing_id}", response_model=ListingRead)

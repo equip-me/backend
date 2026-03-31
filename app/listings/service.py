@@ -4,6 +4,7 @@ from tortoise.functions import Count
 from app.core.enums import ListingStatus, MediaOwnerType, OrganizationStatus
 from app.core.exceptions import NotFoundError
 from app.core.identifiers import create_with_short_id
+from app.core.pagination import CursorParams, PaginatedResponse, paginate
 from app.listings.models import Listing, ListingCategory
 from app.listings.schemas import (
     ListingCategoryCreate,
@@ -177,17 +178,25 @@ async def change_listing_status(listing: Listing, status: ListingStatus, storage
 
 
 @traced
-async def list_org_listings(org_id: str, storage: StorageClient) -> list[ListingRead]:
-    listings = await Listing.filter(organization_id=org_id).prefetch_related("category").order_by("-updated_at")
-    return [await _listing_to_read(listing, storage) for listing in listings]
+async def list_org_listings(
+    org_id: str,
+    storage: StorageClient,
+    params: CursorParams,
+) -> PaginatedResponse[ListingRead]:
+    qs = Listing.filter(organization_id=org_id).prefetch_related("category")
+    items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
+    listing_reads = [await _listing_to_read(listing, storage) for listing in items]
+    return PaginatedResponse(items=listing_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @traced
 async def list_public_listings(
     storage: StorageClient,
+    params: CursorParams,
     category_id: str | None = None,
     organization_id: str | None = None,
-) -> list[ListingRead]:
+    search: str | None = None,
+) -> PaginatedResponse[ListingRead]:
     qs = Listing.filter(
         status=ListingStatus.PUBLISHED,
         organization__status=OrganizationStatus.VERIFIED,
@@ -196,8 +205,17 @@ async def list_public_listings(
         qs = qs.filter(category_id=category_id)
     if organization_id is not None:
         qs = qs.filter(organization_id=organization_id)
-    listings = await qs.prefetch_related("category").order_by("-updated_at")
-    return [await _listing_to_read(listing, storage) for listing in listings]
+    if search:
+        qs = qs.filter(name__icontains=search)
+
+    items, next_cursor, has_more = await paginate(
+        qs.prefetch_related("category"),
+        params,
+        ordering=("-updated_at", "-id"),
+    )
+
+    listing_reads = [await _listing_to_read(listing, storage) for listing in items]
+    return PaginatedResponse(items=listing_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @traced
