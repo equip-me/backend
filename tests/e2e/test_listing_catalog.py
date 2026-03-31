@@ -61,10 +61,10 @@ async def _register(client: httpx.AsyncClient, **overrides: Any) -> tuple[dict[s
         "surname": "Иванов",
     }
     defaults.update(overrides)
-    resp = await client.post("/users/", json=defaults)
+    resp = await client.post("/api/v1/users/", json=defaults)
     assert resp.status_code == 200, resp.text
     token: str = resp.json()["access_token"]
-    me = await client.get("/users/me", headers=_auth(token))
+    me = await client.get("/api/v1/users/me", headers=_auth(token))
     assert me.status_code == 200, me.text
     return me.json(), token
 
@@ -90,7 +90,7 @@ async def _create_org(
     **overrides: Any,
 ) -> dict[str, Any]:
     payload = _org_payload(**overrides)
-    resp = await client.post("/organizations/", json=payload, headers=_auth(token))
+    resp = await client.post("/api/v1/organizations/", json=payload, headers=_auth(token))
     assert resp.status_code == 200, resp.text
     result: dict[str, Any] = resp.json()
     return result
@@ -124,7 +124,7 @@ async def _invite_and_accept_member(
 ) -> None:
     """Invite a user to an org and accept the invitation."""
     invite_resp = await client.post(
-        f"/organizations/{org_id}/members/invite",
+        f"/api/v1/organizations/{org_id}/members/invite",
         json={"user_id": user_id, "role": role},
         headers=_auth(admin_token),
     )
@@ -132,7 +132,7 @@ async def _invite_and_accept_member(
     member_id = invite_resp.json()["id"]
 
     accept_resp = await client.patch(
-        f"/organizations/{org_id}/members/{member_id}/accept",
+        f"/api/v1/organizations/{org_id}/members/{member_id}/accept",
         headers=_auth(user_token),
     )
     assert accept_resp.status_code == 200, accept_resp.text
@@ -197,7 +197,7 @@ async def test_create_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={
             "name": "Excavator CAT 320",
             "category_id": category.id,
@@ -241,7 +241,7 @@ async def test_update_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Old Name", "category_id": category.id, "price": 1000.0},
         headers=_auth(token),
     )
@@ -249,7 +249,7 @@ async def test_update_listing(client: httpx.AsyncClient) -> None:
     listing_id = create_resp.json()["id"]
 
     update_resp = await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}",
         json={
             "name": "New Name",
             "price": 2000.0,
@@ -277,7 +277,7 @@ async def test_publish_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Excavator", "category_id": category.id, "price": 5000.0},
         headers=_auth(token),
     )
@@ -287,7 +287,7 @@ async def test_publish_listing(client: httpx.AsyncClient) -> None:
 
     # Publish
     status_resp = await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
@@ -295,7 +295,7 @@ async def test_publish_listing(client: httpx.AsyncClient) -> None:
     assert status_resp.json()["status"] == ListingStatus.PUBLISHED
 
     # Appears in public catalog
-    catalog_resp = await client.get("/listings/")
+    catalog_resp = await client.get("/api/v1/listings/")
     assert catalog_resp.status_code == 200
     listings = catalog_resp.json()
     assert any(item["id"] == listing_id for item in listings)
@@ -308,7 +308,7 @@ async def test_hide_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Crane", "category_id": category.id, "price": 8000.0},
         headers=_auth(token),
     )
@@ -316,14 +316,14 @@ async def test_hide_listing(client: httpx.AsyncClient) -> None:
 
     # Publish first
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
 
     # Hide
     hide_resp = await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "hidden"},
         headers=_auth(token),
     )
@@ -331,7 +331,7 @@ async def test_hide_listing(client: httpx.AsyncClient) -> None:
     assert hide_resp.json()["status"] == ListingStatus.HIDDEN
 
     # Disappears from public catalog
-    catalog_resp = await client.get("/listings/")
+    catalog_resp = await client.get("/api/v1/listings/")
     listings = catalog_resp.json()
     assert not any(item["id"] == listing_id for item in listings)
 
@@ -343,7 +343,7 @@ async def test_archive_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Loader", "category_id": category.id, "price": 6000.0},
         headers=_auth(token),
     )
@@ -351,19 +351,19 @@ async def test_archive_listing(client: httpx.AsyncClient) -> None:
 
     # Publish then archive
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
     archive_resp = await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "archived"},
         headers=_auth(token),
     )
     assert archive_resp.status_code == 200
     assert archive_resp.json()["status"] == ListingStatus.ARCHIVED
 
-    catalog_resp = await client.get("/listings/")
+    catalog_resp = await client.get("/api/v1/listings/")
     listings = catalog_resp.json()
     assert not any(item["id"] == listing_id for item in listings)
 
@@ -375,20 +375,20 @@ async def test_delete_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Bulldozer", "category_id": category.id, "price": 7000.0},
         headers=_auth(token),
     )
     listing_id = create_resp.json()["id"]
 
     delete_resp = await client.delete(
-        f"/organizations/{org['id']}/listings/{listing_id}",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}",
         headers=_auth(token),
     )
     assert delete_resp.status_code == 204
 
     # 404 on public fetch
-    get_resp = await client.get(f"/listings/{listing_id}")
+    get_resp = await client.get(f"/api/v1/listings/{listing_id}")
     assert get_resp.status_code == 404
 
 
@@ -407,7 +407,7 @@ async def test_listing_with_media(
 
     try:
         create_resp = await client.post(
-            f"/organizations/{org['id']}/listings/",
+            f"/api/v1/organizations/{org['id']}/listings/",
             json={
                 "name": "Excavator with media",
                 "category_id": category.id,
@@ -442,7 +442,7 @@ async def test_update_listing_media(
     try:
         # Create listing with two photos
         create_resp = await client.post(
-            f"/organizations/{org['id']}/listings/",
+            f"/api/v1/organizations/{org['id']}/listings/",
             json={
                 "name": "Loader with photos",
                 "category_id": category.id,
@@ -457,7 +457,7 @@ async def test_update_listing_media(
 
         # Update: keep only photo1
         update_resp = await client.patch(
-            f"/organizations/{org['id']}/listings/{listing_id}",
+            f"/api/v1/organizations/{org['id']}/listings/{listing_id}",
             json={"photo_ids": [str(photo1.id)]},
             headers=_auth(token),
         )
@@ -474,7 +474,7 @@ async def test_create_org_specific_category(client: httpx.AsyncClient) -> None:
     org = await _create_verified_org(client, token)
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/categories/",
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
         json={"name": "Custom Equipment"},
         headers=_auth(token),
     )
@@ -487,7 +487,7 @@ async def test_create_org_specific_category(client: httpx.AsyncClient) -> None:
     # Create a listing with this category so it shows in org categories
     cat_id = body["id"]
     listing_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Custom Item", "category_id": cat_id, "price": 1000.0},
         headers=_auth(token),
     )
@@ -495,7 +495,7 @@ async def test_create_org_specific_category(client: httpx.AsyncClient) -> None:
 
     # Org category list should include it
     org_cats_resp = await client.get(
-        f"/organizations/{org['id']}/listings/categories/",
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
         headers=_auth(token),
     )
     assert org_cats_resp.status_code == 200
@@ -514,31 +514,31 @@ async def test_seed_categories_in_public_list(client: httpx.AsyncClient) -> None
     # Create 2 published listings in cat2, 1 in cat1
     for name in ("Item1", "Item2"):
         resp = await client.post(
-            f"/organizations/{org['id']}/listings/",
+            f"/api/v1/organizations/{org['id']}/listings/",
             json={"name": name, "category_id": cat2.id, "price": 1000.0},
             headers=_auth(token),
         )
         listing_id = resp.json()["id"]
         await client.patch(
-            f"/organizations/{org['id']}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
             json={"status": "published"},
             headers=_auth(token),
         )
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Item3", "category_id": cat1.id, "price": 1000.0},
         headers=_auth(token),
     )
     listing_id = resp.json()["id"]
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
 
     # Public categories: cat2 (2 listings) should come before cat1 (1 listing)
-    public_cats_resp = await client.get("/listings/categories/")
+    public_cats_resp = await client.get("/api/v1/listings/categories/")
     assert public_cats_resp.status_code == 200
     cats = public_cats_resp.json()
     cat_ids = [c["id"] for c in cats]
@@ -564,7 +564,7 @@ async def test_org_category_list_includes_global_and_org_specific(client: httpx.
 
     # Create org-specific category
     org_cat_resp = await client.post(
-        f"/organizations/{org['id']}/listings/categories/",
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
         json={"name": "Org Category"},
         headers=_auth(token),
     )
@@ -574,14 +574,14 @@ async def test_org_category_list_includes_global_and_org_specific(client: httpx.
     # Create a listing with each category so they appear in org list
     for cat_id in (global_cat.id, org_cat_id):
         resp = await client.post(
-            f"/organizations/{org['id']}/listings/",
+            f"/api/v1/organizations/{org['id']}/listings/",
             json={"name": f"Item-{cat_id}", "category_id": cat_id, "price": 1000.0},
             headers=_auth(token),
         )
         assert resp.status_code == 201, resp.text
 
     org_cats_resp = await client.get(
-        f"/organizations/{org['id']}/listings/categories/",
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
         headers=_auth(token),
     )
     assert org_cats_resp.status_code == 200
@@ -605,44 +605,44 @@ async def test_public_catalog_browsing(client: httpx.AsyncClient) -> None:
     # Org1: 1 listing in cat_a, 1 in cat_b
     for name, cat_id in [("O1-A", cat_a.id), ("O1-B", cat_b.id)]:
         resp = await client.post(
-            f"/organizations/{org1['id']}/listings/",
+            f"/api/v1/organizations/{org1['id']}/listings/",
             json={"name": name, "category_id": cat_id, "price": 1000.0},
             headers=_auth(token1),
         )
         listing_id = resp.json()["id"]
         await client.patch(
-            f"/organizations/{org1['id']}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org1['id']}/listings/{listing_id}/status",
             json={"status": "published"},
             headers=_auth(token1),
         )
 
     # Org2: 1 listing in cat_a
     resp = await client.post(
-        f"/organizations/{org2['id']}/listings/",
+        f"/api/v1/organizations/{org2['id']}/listings/",
         json={"name": "O2-A", "category_id": cat_a.id, "price": 2000.0},
         headers=_auth(token2),
     )
     listing_id = resp.json()["id"]
     await client.patch(
-        f"/organizations/{org2['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org2['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token2),
     )
 
     # All listings
-    all_resp = await client.get("/listings/")
+    all_resp = await client.get("/api/v1/listings/")
     assert all_resp.status_code == 200
     assert len(all_resp.json()) == 3
 
     # Filter by category_a
-    cat_a_resp = await client.get(f"/listings/?category_id={cat_a.id}")
+    cat_a_resp = await client.get(f"/api/v1/listings/?category_id={cat_a.id}")
     assert cat_a_resp.status_code == 200
     cat_a_listings = cat_a_resp.json()
     assert len(cat_a_listings) == 2
     assert all(item["category"]["id"] == cat_a.id for item in cat_a_listings)
 
     # Filter by org2
-    org2_resp = await client.get(f"/listings/?organization_id={org2['id']}")
+    org2_resp = await client.get(f"/api/v1/listings/?organization_id={org2['id']}")
     assert org2_resp.status_code == 200
     org2_listings = org2_resp.json()
     assert len(org2_listings) == 1
@@ -650,7 +650,7 @@ async def test_public_catalog_browsing(client: httpx.AsyncClient) -> None:
 
     # Filter by both category_a + org1
     combined_resp = await client.get(
-        f"/listings/?category_id={cat_a.id}&organization_id={org1['id']}",
+        f"/api/v1/listings/?category_id={cat_a.id}&organization_id={org1['id']}",
     )
     assert combined_resp.status_code == 200
     combined = combined_resp.json()
@@ -665,7 +665,7 @@ async def test_listing_detail_public_access(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={
             "name": "Public Excavator",
             "category_id": category.id,
@@ -677,13 +677,13 @@ async def test_listing_detail_public_access(client: httpx.AsyncClient) -> None:
     listing_id = create_resp.json()["id"]
 
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
 
     # Fetch without auth
-    detail_resp = await client.get(f"/listings/{listing_id}")
+    detail_resp = await client.get(f"/api/v1/listings/{listing_id}")
     assert detail_resp.status_code == 200
     body = detail_resp.json()
     assert body["id"] == listing_id
@@ -706,7 +706,7 @@ async def test_non_member_creates_listing(client: httpx.AsyncClient) -> None:
     category = await _create_global_category("Спецтехника")
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Illegal Listing", "category_id": category.id, "price": 1000.0},
         headers=_auth(outsider_token),
     )
@@ -732,7 +732,7 @@ async def test_viewer_creates_listing(client: httpx.AsyncClient) -> None:
     )
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Viewer Listing", "category_id": category.id, "price": 1000.0},
         headers=_auth(viewer_token),
     )
@@ -746,7 +746,7 @@ async def test_listing_in_unverified_org_not_public(client: httpx.AsyncClient) -
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Hidden Org Item", "category_id": category.id, "price": 1000.0},
         headers=_auth(token),
     )
@@ -755,13 +755,13 @@ async def test_listing_in_unverified_org_not_public(client: httpx.AsyncClient) -
 
     # Publish it
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
 
     # Should not appear in public catalog
-    catalog_resp = await client.get("/listings/")
+    catalog_resp = await client.get("/api/v1/listings/")
     assert catalog_resp.status_code == 200
     assert not any(item["id"] == listing_id for item in catalog_resp.json())
 
@@ -775,7 +775,7 @@ async def test_non_member_views_listing_from_unverified_org(client: httpx.AsyncC
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Secret Item", "category_id": category.id, "price": 1000.0},
         headers=_auth(creator_token),
     )
@@ -783,7 +783,7 @@ async def test_non_member_views_listing_from_unverified_org(client: httpx.AsyncC
 
     # Non-member tries to view -> 403
     detail_resp = await client.get(
-        f"/listings/{listing_id}",
+        f"/api/v1/listings/{listing_id}",
         headers=_auth(outsider_token),
     )
     assert detail_resp.status_code == 403
@@ -796,7 +796,7 @@ async def test_member_views_listing_from_unverified_org(client: httpx.AsyncClien
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Internal Item", "category_id": category.id, "price": 1000.0},
         headers=_auth(creator_token),
     )
@@ -804,7 +804,7 @@ async def test_member_views_listing_from_unverified_org(client: httpx.AsyncClien
 
     # Creator is a member, should be able to view
     detail_resp = await client.get(
-        f"/listings/{listing_id}",
+        f"/api/v1/listings/{listing_id}",
         headers=_auth(creator_token),
     )
     assert detail_resp.status_code == 200
@@ -817,7 +817,7 @@ async def test_create_listing_nonexistent_category(client: httpx.AsyncClient) ->
     org = await _create_verified_org(client, token)
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Bad Category Item", "category_id": "NOCAT1", "price": 1000.0},
         headers=_auth(token),
     )
@@ -835,7 +835,7 @@ async def test_update_listing_from_another_org(client: httpx.AsyncClient) -> Non
 
     # Create listing in org1
     create_resp = await client.post(
-        f"/organizations/{org1['id']}/listings/",
+        f"/api/v1/organizations/{org1['id']}/listings/",
         json={"name": "Org1 Item", "category_id": category.id, "price": 1000.0},
         headers=_auth(token1),
     )
@@ -843,7 +843,7 @@ async def test_update_listing_from_another_org(client: httpx.AsyncClient) -> Non
 
     # Token2 (org2 editor) tries to update org1's listing via org2 route
     resp = await client.patch(
-        f"/organizations/{org2['id']}/listings/{listing_id}",
+        f"/api/v1/organizations/{org2['id']}/listings/{listing_id}",
         json={"name": "Hacked Name"},
         headers=_auth(token2),
     )
@@ -860,7 +860,7 @@ async def test_delete_listing_from_another_org(client: httpx.AsyncClient) -> Non
     category = await _create_global_category("Спецтехника")
 
     create_resp = await client.post(
-        f"/organizations/{org1['id']}/listings/",
+        f"/api/v1/organizations/{org1['id']}/listings/",
         json={"name": "Org1 Item", "category_id": category.id, "price": 1000.0},
         headers=_auth(token1),
     )
@@ -868,7 +868,7 @@ async def test_delete_listing_from_another_org(client: httpx.AsyncClient) -> Non
 
     # Token2 tries to delete org1's listing via org2 route
     resp = await client.delete(
-        f"/organizations/{org2['id']}/listings/{listing_id}",
+        f"/api/v1/organizations/{org2['id']}/listings/{listing_id}",
         headers=_auth(token2),
     )
     assert resp.status_code == 404  # listing not found in org2
@@ -893,14 +893,14 @@ async def test_status_change_by_viewer(client: httpx.AsyncClient) -> None:
     )
 
     create_resp = await client.post(
-        f"/organizations/{org['id']}/listings/",
+        f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Item", "category_id": category.id, "price": 1000.0},
         headers=_auth(admin_token),
     )
     listing_id = create_resp.json()["id"]
 
     resp = await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_id}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
         json={"status": "published"},
         headers=_auth(viewer_token),
     )
@@ -916,7 +916,7 @@ async def test_public_catalog_excludes_hidden_archived(client: httpx.AsyncClient
     listing_ids: dict[str, str] = {}
     for name in ("Published Item", "Hidden Item", "Archived Item"):
         resp = await client.post(
-            f"/organizations/{org['id']}/listings/",
+            f"/api/v1/organizations/{org['id']}/listings/",
             json={"name": name, "category_id": category.id, "price": 1000.0},
             headers=_auth(token),
         )
@@ -925,26 +925,26 @@ async def test_public_catalog_excludes_hidden_archived(client: httpx.AsyncClient
     # Publish all first
     for lid in listing_ids.values():
         await client.patch(
-            f"/organizations/{org['id']}/listings/{lid}/status",
+            f"/api/v1/organizations/{org['id']}/listings/{lid}/status",
             json={"status": "published"},
             headers=_auth(token),
         )
 
     # Hide one
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_ids['Hidden Item']}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_ids['Hidden Item']}/status",
         json={"status": "hidden"},
         headers=_auth(token),
     )
 
     # Archive another
     await client.patch(
-        f"/organizations/{org['id']}/listings/{listing_ids['Archived Item']}/status",
+        f"/api/v1/organizations/{org['id']}/listings/{listing_ids['Archived Item']}/status",
         json={"status": "archived"},
         headers=_auth(token),
     )
 
-    catalog_resp = await client.get("/listings/")
+    catalog_resp = await client.get("/api/v1/listings/")
     assert catalog_resp.status_code == 200
     catalog_ids = [item["id"] for item in catalog_resp.json()]
     assert listing_ids["Published Item"] in catalog_ids
@@ -969,7 +969,7 @@ async def test_create_category_by_viewer(client: httpx.AsyncClient) -> None:
     )
 
     resp = await client.post(
-        f"/organizations/{org['id']}/listings/categories/",
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
         json={"name": "Viewer Category"},
         headers=_auth(viewer_token),
     )
@@ -986,7 +986,7 @@ async def test_public_category_list_excludes_unverified(client: httpx.AsyncClien
 
     # Create an org-specific unverified category
     org_cat_resp = await client.post(
-        f"/organizations/{org['id']}/listings/categories/",
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
         json={"name": "Org Unverified"},
         headers=_auth(token),
     )
@@ -994,7 +994,7 @@ async def test_public_category_list_excludes_unverified(client: httpx.AsyncClien
     org_cat_id = org_cat_resp.json()["id"]
 
     # Public list should include global verified, exclude unverified
-    public_resp = await client.get("/listings/categories/")
+    public_resp = await client.get("/api/v1/listings/categories/")
     assert public_resp.status_code == 200
     public_cat_ids = [c["id"] for c in public_resp.json()]
     assert global_cat.id in public_cat_ids

@@ -19,7 +19,7 @@ async def _create_order(
     start = _today() + timedelta(days=start_offset)
     end = start + timedelta(days=duration)
     resp = await client.post(
-        "/orders/",
+        "/api/v1/orders/",
         json={
             "listing_id": listing_id,
             "requested_start_date": start.isoformat(),
@@ -44,7 +44,7 @@ class TestCreateOrder:
         end = start + timedelta(days=4)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -67,7 +67,7 @@ class TestCreateOrder:
         end = start + timedelta(days=4)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": "XXXXXX",
                 "requested_start_date": start.isoformat(),
@@ -88,7 +88,7 @@ class TestCreateOrder:
         org_id = org_data["id"]
 
         resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={
                 "name": "Hidden item",
                 "category_id": seed_categories[0].id,
@@ -102,7 +102,7 @@ class TestCreateOrder:
         start = _today() + timedelta(days=1)
         end = start + timedelta(days=2)
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -123,7 +123,7 @@ class TestCreateOrder:
         org_id = org_data["id"]
 
         resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={
                 "name": "Unverified item",
                 "category_id": seed_categories[0].id,
@@ -135,7 +135,7 @@ class TestCreateOrder:
         listing_id = resp.json()["id"]
 
         patch_resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {org_token}"},
         )
@@ -144,7 +144,7 @@ class TestCreateOrder:
         start = _today() + timedelta(days=1)
         end = start + timedelta(days=2)
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -163,7 +163,7 @@ class TestCreateOrder:
         listing_id, _org_id, _org_token = create_listing
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": (_today() - timedelta(days=1)).isoformat(),
@@ -184,7 +184,7 @@ class TestCreateOrder:
         end = _today() + timedelta(days=1)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -205,7 +205,7 @@ class TestCreateOrder:
         end = start + timedelta(days=4)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -226,7 +226,7 @@ class TestCreateOrder:
         end = start + timedelta(days=2)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -247,7 +247,7 @@ async def _create_offered_order(
     start = _today() + timedelta(days=2)
     end = start + timedelta(days=5)
     resp = await client.patch(
-        f"/organizations/{org_id}/orders/{order['id']}/offer",
+        f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
         json={
             "offered_cost": "30000.00",
             "offered_start_date": start.isoformat(),
@@ -273,7 +273,7 @@ class TestOfferOrder:
         start = _today() + timedelta(days=2)
         end = start + timedelta(days=5)
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "30000.00",
                 "offered_start_date": start.isoformat(),
@@ -298,7 +298,7 @@ class TestOfferOrder:
         start = _today() + timedelta(days=2)
         end = start + timedelta(days=5)
         await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "30000.00",
                 "offered_start_date": start.isoformat(),
@@ -308,7 +308,7 @@ class TestOfferOrder:
         )
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "25000.00",
                 "offered_start_date": start.isoformat(),
@@ -340,7 +340,7 @@ class TestOfferOrder:
         start = _today() + timedelta(days=2)
         end = start + timedelta(days=5)
         resp = await client.patch(
-            f"/organizations/{other_org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{other_org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "30000.00",
                 "offered_start_date": start.isoformat(),
@@ -368,17 +368,17 @@ class TestOfferOrder:
         }
 
         await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json=offer_data,
             headers={"Authorization": f"Bearer {org_token}"},
         )
         await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json=offer_data,
             headers={"Authorization": f"Bearer {org_token}"},
         )
@@ -396,7 +396,7 @@ class TestOfferOrder:
         start = _today() + timedelta(days=2)
         end = start + timedelta(days=5)
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "-100.00",
                 "offered_start_date": start.isoformat(),
@@ -418,7 +418,7 @@ class TestOfferOrder:
         start = _today() + timedelta(days=5)
         end = _today() + timedelta(days=2)
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "30000.00",
                 "offered_start_date": start.isoformat(),
@@ -438,7 +438,7 @@ class TestOrderNotFound:
     ) -> None:
         # get_order_or_404 raises NotFoundError (404) before the requester check runs
         resp = await client.get(
-            "/orders/XXXXXX",
+            "/api/v1/orders/XXXXXX",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 404
@@ -451,7 +451,7 @@ class TestOrderNotFound:
     ) -> None:
         _listing_id, org_id, org_token = create_listing
         resp = await client.get(
-            f"/organizations/{org_id}/orders/XXXXXX",
+            f"/api/v1/organizations/{org_id}/orders/XXXXXX",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 404
@@ -469,7 +469,7 @@ class TestRejectOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/reject",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
@@ -487,7 +487,7 @@ class TestRejectOrder:
         start = _today() + timedelta(days=2)
         end = start + timedelta(days=5)
         await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json={
                 "offered_cost": "30000.00",
                 "offered_start_date": start.isoformat(),
@@ -497,7 +497,7 @@ class TestRejectOrder:
         )
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/reject",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 400
@@ -515,7 +515,7 @@ class TestConfirmOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         resp = await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
@@ -538,7 +538,7 @@ class TestConfirmOrder:
             surname="User",
         )
         resp = await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {other_token}"},
         )
         assert resp.status_code == 403
@@ -553,7 +553,7 @@ class TestConfirmOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 400
@@ -571,7 +571,7 @@ class TestDeclineOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         resp = await client.patch(
-            f"/orders/{order['id']}/decline",
+            f"/api/v1/orders/{order['id']}/decline",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
@@ -587,7 +587,7 @@ class TestDeclineOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/orders/{order['id']}/decline",
+            f"/api/v1/orders/{order['id']}/decline",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 400
@@ -605,12 +605,12 @@ class TestCancelOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
         resp = await client.patch(
-            f"/orders/{order['id']}/cancel",
+            f"/api/v1/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
@@ -626,12 +626,12 @@ class TestCancelOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
         resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order['id']}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
@@ -647,7 +647,7 @@ class TestCancelOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/orders/{order['id']}/cancel",
+            f"/api/v1/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 400
@@ -666,7 +666,7 @@ class TestListOrders:
         await _create_order(client, listing_id, renter_token, start_offset=10)
 
         resp = await client.get(
-            "/orders/",
+            "/api/v1/orders/",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
@@ -678,7 +678,7 @@ class TestListOrders:
         renter_token: str,
     ) -> None:
         resp = await client.get(
-            "/orders/",
+            "/api/v1/orders/",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
@@ -694,7 +694,7 @@ class TestListOrders:
         await _create_order(client, listing_id, renter_token)
 
         resp = await client.get(
-            f"/organizations/{org_id}/orders/",
+            f"/api/v1/organizations/{org_id}/orders/",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
@@ -709,7 +709,7 @@ class TestListOrders:
         _listing_id, org_id, _org_token = create_listing
 
         resp = await client.get(
-            f"/organizations/{org_id}/orders/",
+            f"/api/v1/organizations/{org_id}/orders/",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 403
@@ -727,7 +727,7 @@ class TestGetOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.get(
-            f"/orders/{order['id']}",
+            f"/api/v1/orders/{order['id']}",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
@@ -743,7 +743,7 @@ class TestGetOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.get(
-            f"/organizations/{org_id}/orders/{order['id']}",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
@@ -766,7 +766,7 @@ class TestGetOrder:
             surname="Person",
         )
         resp = await client.get(
-            f"/orders/{order['id']}",
+            f"/api/v1/orders/{order['id']}",
             headers={"Authorization": f"Bearer {other_token}"},
         )
         assert resp.status_code == 403
@@ -785,7 +785,7 @@ class TestListingSideEffects:
         start = _today()
         end = start + timedelta(days=5)
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -797,7 +797,7 @@ class TestListingSideEffects:
         order_id = resp.json()["id"]
 
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": "25000.00",
                 "offered_start_date": start.isoformat(),
@@ -807,31 +807,31 @@ class TestListingSideEffects:
         )
 
         await client.patch(
-            f"/orders/{order_id}/confirm",
+            f"/api/v1/orders/{order_id}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
         # Fetch the order — lazy eval should transition to active since start is today
         resp = await client.get(
-            f"/orders/{order_id}",
+            f"/api/v1/orders/{order_id}",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.json()["status"] == "active"
 
         # Check listing is in_rent
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "in_rent"
 
         # Cancel the order
         resp = await client.patch(
-            f"/orders/{order_id}/cancel",
+            f"/api/v1/orders/{order_id}/cancel",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
         assert resp.json()["status"] == "canceled_by_user"
 
         # Check listing is published again
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"
 
     async def test_cancel_confirmed_does_not_change_listing(
@@ -844,19 +844,19 @@ class TestListingSideEffects:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         await client.patch(
-            f"/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"
 
         await client.patch(
-            f"/orders/{order['id']}/cancel",
+            f"/api/v1/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"
 
     async def test_finished_order_restores_listing_to_published(
@@ -870,7 +870,7 @@ class TestListingSideEffects:
         start = _today()
         end = _today()
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -885,7 +885,7 @@ class TestListingSideEffects:
         past_start = start - timedelta(days=2)
         past_end = start - timedelta(days=1)
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": "5000.00",
                 "offered_start_date": past_start.isoformat(),
@@ -895,17 +895,17 @@ class TestListingSideEffects:
         )
 
         await client.patch(
-            f"/orders/{order_id}/confirm",
+            f"/api/v1/orders/{order_id}/confirm",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
 
         # GET triggers lazy eval: confirmed → active → finished (both dates in past)
         resp = await client.get(
-            f"/orders/{order_id}",
+            f"/api/v1/orders/{order_id}",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.json()["status"] == "finished"
 
         # Listing must be published — exercises the FINISHED branch in _apply_auto_transition
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"

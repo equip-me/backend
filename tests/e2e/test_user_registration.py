@@ -49,10 +49,10 @@ def _auth_header(token: str) -> dict[str, str]:
 async def _register(client: httpx.AsyncClient, **overrides: Any) -> tuple[dict[str, Any], str]:
     """Register a user and return (user_read, token)."""
     data = _user_data(**overrides)
-    resp = await client.post("/users/", json=data)
+    resp = await client.post("/api/v1/users/", json=data)
     assert resp.status_code == 200, resp.text
     token: str = resp.json()["access_token"]
-    me = await client.get("/users/me", headers=_auth_header(token))
+    me = await client.get("/api/v1/users/me", headers=_auth_header(token))
     assert me.status_code == 200, me.text
     return me.json(), token
 
@@ -121,19 +121,19 @@ async def test_full_registration_login_profile(client: httpx.AsyncClient) -> Non
     user_data = _user_data()
 
     # Register
-    reg_resp = await client.post("/users/", json=user_data)
+    reg_resp = await client.post("/api/v1/users/", json=user_data)
     assert reg_resp.status_code == 200
 
     # Login with same credentials
     login_resp = await client.post(
-        "/users/token",
+        "/api/v1/users/token",
         json={"email": user_data["email"], "password": user_data["password"]},
     )
     assert login_resp.status_code == 200
     login_token = login_resp.json()["access_token"]
 
     # Fetch profile
-    me = await client.get("/users/me", headers=_auth_header(login_token))
+    me = await client.get("/api/v1/users/me", headers=_auth_header(login_token))
     assert me.status_code == 200
     body = me.json()
     assert body["email"] == user_data["email"]
@@ -151,7 +151,7 @@ async def test_profile_update(client: httpx.AsyncClient) -> None:
     _, token = await _register(client)
 
     patch_resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"name": "Bob", "phone": "+79997654321", "email": "bob@example.com"},
         headers=_auth_header(token),
     )
@@ -162,7 +162,7 @@ async def test_profile_update(client: httpx.AsyncClient) -> None:
     assert updated["email"] == "bob@example.com"
 
     # Verify persistence
-    me = await client.get("/users/me", headers=_auth_header(token))
+    me = await client.get("/api/v1/users/me", headers=_auth_header(token))
     assert me.status_code == 200
     assert me.json()["name"] == "Bob"
     assert me.json()["email"] == "bob@example.com"
@@ -174,7 +174,7 @@ async def test_password_change(client: httpx.AsyncClient) -> None:
 
     new_password = "NewStrong1"
     patch_resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"password": "StrongPass1", "new_password": new_password},
         headers=_auth_header(token),
     )
@@ -182,14 +182,14 @@ async def test_password_change(client: httpx.AsyncClient) -> None:
 
     # Login with new password
     login_resp = await client.post(
-        "/users/token",
+        "/api/v1/users/token",
         json={"email": _USER_DATA["email"], "password": new_password},
     )
     assert login_resp.status_code == 200
 
     # Old password should fail
     old_login = await client.post(
-        "/users/token",
+        "/api/v1/users/token",
         json={"email": _USER_DATA["email"], "password": "StrongPass1"},
     )
     assert old_login.status_code == 401
@@ -200,7 +200,7 @@ async def test_public_profile(client: httpx.AsyncClient) -> None:
     user, _token = await _register(client)
     user_id = user["id"]
 
-    resp = await client.get(f"/users/{user_id}")
+    resp = await client.get(f"/api/v1/users/{user_id}")
     assert resp.status_code == 200
     body = resp.json()
     assert body["id"] == user_id
@@ -221,7 +221,7 @@ async def test_profile_photo_upload(
     try:
         # Attach via PATCH /users/me
         patch_resp = await client.patch(
-            "/users/me",
+            "/api/v1/users/me",
             json={"profile_photo_id": str(media.id)},
             headers=_auth_header(token),
         )
@@ -233,7 +233,7 @@ async def test_profile_photo_upload(
         assert body["profile_photo"]["small_url"]
 
         # Also visible on /users/me
-        me = await client.get("/users/me", headers=_auth_header(token))
+        me = await client.get("/api/v1/users/me", headers=_auth_header(token))
         assert me.json()["profile_photo"]["id"] == str(media.id)
     finally:
         await real_storage.delete_prefix(f"pending/{media.id}/")
@@ -254,14 +254,14 @@ async def test_profile_photo_replacement(
     try:
         # Attach first photo
         await client.patch(
-            "/users/me",
+            "/api/v1/users/me",
             json={"profile_photo_id": str(photo1.id)},
             headers=_auth_header(token),
         )
 
         # Attach second photo (replaces first)
         resp = await client.patch(
-            "/users/me",
+            "/api/v1/users/me",
             json={"profile_photo_id": str(photo2.id)},
             headers=_auth_header(token),
         )
@@ -269,7 +269,7 @@ async def test_profile_photo_replacement(
         assert resp.json()["profile_photo"]["id"] == str(photo2.id)
 
         # Verify first photo is detached (no longer the profile photo)
-        me = await client.get("/users/me", headers=_auth_header(token))
+        me = await client.get("/api/v1/users/me", headers=_auth_header(token))
         assert me.json()["profile_photo"]["id"] == str(photo2.id)
     finally:
         for photo in (photo1, photo2):
@@ -285,7 +285,7 @@ async def test_profile_photo_replacement(
 async def test_duplicate_email(client: httpx.AsyncClient) -> None:
     """Scenario 7: duplicate email -> 409."""
     await _register(client)
-    resp = await client.post("/users/", json=_user_data())
+    resp = await client.post("/api/v1/users/", json=_user_data())
     assert resp.status_code == 409
 
 
@@ -301,16 +301,16 @@ async def test_duplicate_email(client: httpx.AsyncClient) -> None:
 )
 async def test_weak_passwords(client: httpx.AsyncClient, password: str, reason: str) -> None:
     """Scenario 8: weak passwords -> 422."""
-    resp = await client.post("/users/", json=_user_data(password=password))
+    resp = await client.post("/api/v1/users/", json=_user_data(password=password))
     assert resp.status_code == 422, f"Expected 422 for password with {reason}, got {resp.status_code}"
 
 
 async def test_invalid_phone(client: httpx.AsyncClient) -> None:
     """Scenario 9: invalid phone -> 422."""
-    resp = await client.post("/users/", json=_user_data(phone="123"))
+    resp = await client.post("/api/v1/users/", json=_user_data(phone="123"))
     assert resp.status_code == 422
 
-    resp2 = await client.post("/users/", json=_user_data(phone="not-a-phone"))
+    resp2 = await client.post("/api/v1/users/", json=_user_data(phone="not-a-phone"))
     assert resp2.status_code == 422
 
 
@@ -318,7 +318,7 @@ async def test_login_wrong_password(client: httpx.AsyncClient) -> None:
     """Scenario 10: login with wrong password -> 401."""
     await _register(client)
     resp = await client.post(
-        "/users/token",
+        "/api/v1/users/token",
         json={"email": _USER_DATA["email"], "password": "WrongPass1"},
     )
     assert resp.status_code == 401
@@ -327,7 +327,7 @@ async def test_login_wrong_password(client: httpx.AsyncClient) -> None:
 async def test_login_nonexistent_email(client: httpx.AsyncClient) -> None:
     """Scenario 11: login with non-existent email -> 401."""
     resp = await client.post(
-        "/users/token",
+        "/api/v1/users/token",
         json={"email": "nobody@example.com", "password": "StrongPass1"},
     )
     assert resp.status_code == 401
@@ -335,11 +335,11 @@ async def test_login_nonexistent_email(client: httpx.AsyncClient) -> None:
 
 async def test_expired_invalid_token(client: httpx.AsyncClient) -> None:
     """Scenario 12: expired/invalid token -> 401."""
-    resp = await client.get("/users/me", headers=_auth_header("invalid.token.here"))
+    resp = await client.get("/api/v1/users/me", headers=_auth_header("invalid.token.here"))
     assert resp.status_code == 401
 
     # Completely missing auth
-    resp2 = await client.get("/users/me")
+    resp2 = await client.get("/api/v1/users/me")
     assert resp2.status_code == 401
 
 
@@ -352,12 +352,12 @@ async def test_suspended_user_flow(client: httpx.AsyncClient) -> None:
     await User.filter(id=user_id).update(role=UserRole.SUSPENDED)
 
     # Suspended user should get 403 on authenticated endpoints
-    me = await client.get("/users/me", headers=_auth_header(token))
+    me = await client.get("/api/v1/users/me", headers=_auth_header(token))
     assert me.status_code == 403
 
     # Login should also fail with 403
     login_resp = await client.post(
-        "/users/token",
+        "/api/v1/users/token",
         json={"email": _USER_DATA["email"], "password": "StrongPass1"},
     )
     assert login_resp.status_code == 403
@@ -376,7 +376,7 @@ async def test_upload_wrong_media_kind_for_profile(client: httpx.AsyncClient) ->
     # Request upload URL for a video in user_profile context
     # This should succeed (upload URL creation doesn't validate context-kind pairing)
     upload_resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "video",
             "context": "user_profile",
@@ -396,7 +396,7 @@ async def test_upload_wrong_media_kind_for_profile(client: httpx.AsyncClient) ->
             variants={"full": "fake/key", "preview": "fake/key"},
         )
         patch_resp = await client.patch(
-            "/users/me",
+            "/api/v1/users/me",
             json={"profile_photo_id": media_id},
             headers=_auth_header(token),
         )
@@ -413,7 +413,7 @@ async def test_upload_confirm_by_another_user(client: httpx.AsyncClient) -> None
 
     # User1 requests upload URL
     upload_resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -428,7 +428,7 @@ async def test_upload_confirm_by_another_user(client: httpx.AsyncClient) -> None
 
     # User2 tries to confirm user1's upload -> 403
     confirm_resp = await client.post(
-        f"/media/{media_id}/confirm",
+        f"/api/v1/media/{media_id}/confirm",
         headers=_auth_header(token2),
     )
     assert confirm_resp.status_code == 403
@@ -443,7 +443,7 @@ async def test_oversized_file_upload(client: httpx.AsyncClient) -> None:
     oversized = max_photo_bytes + 1
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",

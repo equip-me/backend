@@ -7,9 +7,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from tortoise.contrib.fastapi import RegisterTortoise
 
+from app.admin.router import router as admin_router
 from app.core.config import get_settings
 from app.core.database import get_tortoise_config
 from app.core.exceptions import AppError, app_error_handler
+from app.listings.categories_router import router as categories_router
 from app.listings.models import ListingCategory
 from app.listings.router import router as listings_router
 from app.media.router import router as media_router
@@ -17,6 +19,7 @@ from app.media.storage import init_storage
 from app.observability import instrument_app, setup_observability, shutdown_observability
 from app.observability.middleware import TraceIDMiddleware
 from app.orders.router import router as orders_router
+from app.organizations.members_router import router as members_router
 from app.organizations.router import router as organizations_router
 from app.users.router import router as users_router
 
@@ -81,9 +84,12 @@ def create_app() -> FastAPI:
     application.add_exception_handler(AppError, _handle_app_error)
     application.include_router(users_router)
     application.include_router(organizations_router)
+    application.include_router(members_router)
     application.include_router(listings_router)
+    application.include_router(categories_router)
     application.include_router(orders_router)
     application.include_router(media_router)
+    application.include_router(admin_router)
 
     return application
 

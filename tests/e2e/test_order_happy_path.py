@@ -41,10 +41,10 @@ async def _register(client: httpx.AsyncClient, **overrides: Any) -> tuple[dict[s
         "surname": "Иванов",
     }
     defaults.update(overrides)
-    resp = await client.post("/users/", json=defaults)
+    resp = await client.post("/api/v1/users/", json=defaults)
     assert resp.status_code == 200, resp.text
     token: str = resp.json()["access_token"]
-    me = await client.get("/users/me", headers=_auth(token))
+    me = await client.get("/api/v1/users/me", headers=_auth(token))
     assert me.status_code == 200, me.text
     return me.json(), token
 
@@ -60,7 +60,7 @@ async def _create_verified_org(client: httpx.AsyncClient, token: str, *, inn: st
             },
         ],
     }
-    resp = await client.post("/organizations/", json=payload, headers=_auth(token))
+    resp = await client.post("/api/v1/organizations/", json=payload, headers=_auth(token))
     assert resp.status_code == 200, resp.text
     org: dict[str, Any] = resp.json()
     await Organization.filter(id=org["id"]).update(status=OrganizationStatus.VERIFIED)
@@ -76,7 +76,7 @@ async def _create_published_listing(
 ) -> dict[str, Any]:
     cat = await ListingCategory.create(name="Test Category", verified=True)
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator CAT 320",
             "category_id": cat.id,
@@ -89,7 +89,7 @@ async def _create_published_listing(
     listing = resp.json()
 
     patch_resp = await client.patch(
-        f"/organizations/{org_id}/listings/{listing['id']}/status",
+        f"/api/v1/organizations/{org_id}/listings/{listing['id']}/status",
         json={"status": "published"},
         headers=_auth(token),
     )
@@ -141,7 +141,7 @@ class TestOrderHappyPaths:
 
         # Renter creates order
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start_str,
@@ -156,7 +156,7 @@ class TestOrderHappyPaths:
 
         # Org offers terms
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": "4500.00",
                 "offered_start_date": start_str,
@@ -169,7 +169,7 @@ class TestOrderHappyPaths:
 
         # Renter confirms
         confirm_resp = await client.patch(
-            f"/orders/{order_id}/confirm",
+            f"/api/v1/orders/{order_id}/confirm",
             headers=_auth(renter_token),
         )
         assert confirm_resp.status_code == 200
@@ -181,7 +181,7 @@ class TestOrderHappyPaths:
             start_date.year, start_date.month, start_date.day, tzinfo=datetime.UTC
         )
 
-        get_resp = await client.get(f"/orders/{order_id}", headers=_auth(renter_token))
+        get_resp = await client.get(f"/api/v1/orders/{order_id}", headers=_auth(renter_token))
         assert get_resp.status_code == 200
         assert get_resp.json()["status"] == OrderStatus.ACTIVE
 
@@ -195,7 +195,7 @@ class TestOrderHappyPaths:
             end_date.year, end_date.month, end_date.day + 1, tzinfo=datetime.UTC
         )
 
-        get_resp2 = await client.get(f"/orders/{order_id}", headers=_auth(renter_token))
+        get_resp2 = await client.get(f"/api/v1/orders/{order_id}", headers=_auth(renter_token))
         assert get_resp2.status_code == 200
         assert get_resp2.json()["status"] == OrderStatus.FINISHED
 
@@ -209,7 +209,7 @@ class TestOrderHappyPaths:
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start_str,
@@ -224,7 +224,7 @@ class TestOrderHappyPaths:
 
         # Org offers same terms
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": estimated,
                 "offered_start_date": start_str,
@@ -245,7 +245,7 @@ class TestOrderHappyPaths:
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start_str,
@@ -257,7 +257,7 @@ class TestOrderHappyPaths:
 
         # First offer
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": "3000.00",
                 "offered_start_date": start_str,
@@ -269,7 +269,7 @@ class TestOrderHappyPaths:
         # Re-offer with different cost
         new_start_str, new_end_str = _future_dates(days_ahead=12, duration=4)
         reoffer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": "3500.00",
                 "offered_start_date": new_start_str,
@@ -283,7 +283,7 @@ class TestOrderHappyPaths:
 
         # Renter confirms the updated offer
         confirm_resp = await client.patch(
-            f"/orders/{order_id}/confirm",
+            f"/api/v1/orders/{order_id}/confirm",
             headers=_auth(renter_token),
         )
         assert confirm_resp.status_code == 200
@@ -296,7 +296,7 @@ class TestOrderHappyPaths:
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start_str,
@@ -313,7 +313,7 @@ class TestOrderHappyPaths:
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start_str,
@@ -325,7 +325,7 @@ class TestOrderHappyPaths:
 
         # Offer
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={
                 "offered_cost": "4000.00",
                 "offered_start_date": start_str,
@@ -336,7 +336,7 @@ class TestOrderHappyPaths:
 
         # Confirm
         await client.patch(
-            f"/orders/{order_id}/confirm",
+            f"/api/v1/orders/{order_id}/confirm",
             headers=_auth(renter_token),
         )
 
@@ -347,7 +347,7 @@ class TestOrderHappyPaths:
             past_end.year, past_end.month, past_end.day, tzinfo=datetime.UTC
         )
 
-        get_resp = await client.get(f"/orders/{order_id}", headers=_auth(renter_token))
+        get_resp = await client.get(f"/api/v1/orders/{order_id}", headers=_auth(renter_token))
         assert get_resp.status_code == 200
         assert get_resp.json()["status"] == OrderStatus.FINISHED
 
@@ -359,17 +359,17 @@ class TestOrderHappyPaths:
         start2, end2 = _future_dates(days_ahead=20, duration=5)
 
         await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start1, "requested_end_date": end1},
             headers=_auth(renter_token),
         )
         await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start2, "requested_end_date": end2},
             headers=_auth(renter_token),
         )
 
-        list_resp = await client.get("/orders/", headers=_auth(renter_token))
+        list_resp = await client.get("/api/v1/orders/", headers=_auth(renter_token))
         assert list_resp.status_code == 200
         assert len(list_resp.json()) == 2
 
@@ -379,13 +379,13 @@ class TestOrderHappyPaths:
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
 
         list_resp = await client.get(
-            f"/organizations/{org_id}/orders/",
+            f"/api/v1/organizations/{org_id}/orders/",
             headers=_auth(org_token),
         )
         assert list_resp.status_code == 200
@@ -398,20 +398,20 @@ class TestOrderHappyPaths:
         start_str, end_str = _future_dates(days_ahead=10, duration=5)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         # Renter view
-        renter_view = await client.get(f"/orders/{order_id}", headers=_auth(renter_token))
+        renter_view = await client.get(f"/api/v1/orders/{order_id}", headers=_auth(renter_token))
         assert renter_view.status_code == 200
         assert renter_view.json()["id"] == order_id
 
         # Org view
         org_view = await client.get(
-            f"/organizations/{org_id}/orders/{order_id}",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}",
             headers=_auth(org_token),
         )
         assert org_view.status_code == 200
@@ -434,7 +434,7 @@ class TestOrderNegativeCases:
 
         cat = await ListingCategory.create(name="Cat", verified=True)
         resp = await client.post(
-            f"/organizations/{org['id']}/listings/",
+            f"/api/v1/organizations/{org['id']}/listings/",
             json={"name": "Hidden Item", "category_id": cat.id, "price": 500.0, "description": "x"},
             headers=_auth(org_token),
         )
@@ -447,7 +447,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         order_resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": hidden_listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -460,14 +460,14 @@ class TestOrderNegativeCases:
             "inn": SBERBANK_INN,
             "contacts": [{"display_name": "Test", "phone": "+79991234567", "email": "c@e.com"}],
         }
-        org_resp = await client.post("/organizations/", json=payload, headers=_auth(org_token))
+        org_resp = await client.post("/api/v1/organizations/", json=payload, headers=_auth(org_token))
         assert org_resp.status_code == 200
         org_id = org_resp.json()["id"]
 
         # Create listing directly (not via API, since unverified org might block publishing)
         cat = await ListingCategory.create(name="Cat", verified=True)
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item", "category_id": cat.id, "price": 500.0, "description": "x"},
             headers=_auth(org_token),
         )
@@ -483,7 +483,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         order_resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -496,7 +496,7 @@ class TestOrderNegativeCases:
         end_str = (_today() + datetime.timedelta(days=5)).isoformat()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": past_start, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -509,7 +509,7 @@ class TestOrderNegativeCases:
         end = start - datetime.timedelta(days=3)
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={
                 "listing_id": listing_id,
                 "requested_start_date": start.isoformat(),
@@ -525,7 +525,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": "NOSUCH", "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -535,7 +535,7 @@ class TestOrderNegativeCases:
         """Scenario 14: no auth header returns 401."""
         start_str, end_str = _future_dates()
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": "SOMEID", "requested_start_date": start_str, "requested_end_date": end_str},
         )
         assert resp.status_code == 401
@@ -546,7 +546,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -554,7 +554,7 @@ class TestOrderNegativeCases:
 
         # Missing offered_cost
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
@@ -566,14 +566,14 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "-100.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
@@ -585,14 +585,14 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": end_str, "offered_end_date": start_str},
             headers=_auth(org_token),
         )
@@ -604,7 +604,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -616,7 +616,7 @@ class TestOrderNegativeCases:
         other_org_id = other_org["id"]
 
         offer_resp = await client.patch(
-            f"/organizations/{other_org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{other_org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(other_org_token),
         )
@@ -628,7 +628,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -636,15 +636,15 @@ class TestOrderNegativeCases:
 
         # Offer + confirm
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
-        await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+        await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
 
         # Try to offer again on confirmed order
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "2000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
@@ -656,13 +656,13 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
-        confirm_resp = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+        confirm_resp = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
         assert confirm_resp.status_code == 400
 
     async def test_non_requester_confirms(self, client: httpx.AsyncClient) -> None:
@@ -671,14 +671,14 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
@@ -687,7 +687,7 @@ class TestOrderNegativeCases:
         _, stranger_token = await _register(
             client, email="stranger@example.com", phone="+79009998877", name="S", surname="T"
         )
-        confirm_resp = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(stranger_token))
+        confirm_resp = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(stranger_token))
         assert confirm_resp.status_code == 403
 
     async def test_non_requester_declines(self, client: httpx.AsyncClient) -> None:
@@ -696,14 +696,14 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
@@ -711,7 +711,7 @@ class TestOrderNegativeCases:
         _, stranger_token = await _register(
             client, email="stranger@example.com", phone="+79009998877", name="S", surname="T"
         )
-        decline_resp = await client.patch(f"/orders/{order_id}/decline", headers=_auth(stranger_token))
+        decline_resp = await client.patch(f"/api/v1/orders/{order_id}/decline", headers=_auth(stranger_token))
         assert decline_resp.status_code == 403
 
     async def test_org_editor_tries_to_confirm(self, client: httpx.AsyncClient) -> None:
@@ -720,20 +720,20 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
 
         # Org owner tries the renter confirm endpoint
-        confirm_resp = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(org_token))
+        confirm_resp = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(org_token))
         assert confirm_resp.status_code == 403
 
     async def test_renter_tries_to_offer(self, client: httpx.AsyncClient) -> None:
@@ -742,7 +742,7 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -750,7 +750,7 @@ class TestOrderNegativeCases:
 
         # Renter tries the org offer endpoint
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(renter_token),
         )
@@ -762,24 +762,24 @@ class TestOrderNegativeCases:
         start_str, end_str = _future_dates()
 
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
 
         # First confirm
-        first = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+        first = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
         assert first.status_code == 200
 
         # Second confirm
-        second = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+        second = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
         assert second.status_code == 400
 
     async def test_actions_on_terminal_statuses(self, client: httpx.AsyncClient) -> None:
@@ -789,14 +789,14 @@ class TestOrderNegativeCases:
 
         # Create and reject an order
         resp = await client.post(
-            "/orders/",
+            "/api/v1/orders/",
             json={"listing_id": listing_id, "requested_start_date": start_str, "requested_end_date": end_str},
             headers=_auth(renter_token),
         )
         order_id = resp.json()["id"]
 
         reject_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/reject",
             headers=_auth(org_token),
         )
         assert reject_resp.status_code == 200
@@ -804,27 +804,27 @@ class TestOrderNegativeCases:
 
         # Try to offer on rejected order
         offer_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/offer",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
             json={"offered_cost": "1000.00", "offered_start_date": start_str, "offered_end_date": end_str},
             headers=_auth(org_token),
         )
         assert offer_resp.status_code == 400
 
         # Try to confirm rejected order
-        confirm_resp = await client.patch(f"/orders/{order_id}/confirm", headers=_auth(renter_token))
+        confirm_resp = await client.patch(f"/api/v1/orders/{order_id}/confirm", headers=_auth(renter_token))
         assert confirm_resp.status_code == 400
 
         # Try to decline rejected order
-        decline_resp = await client.patch(f"/orders/{order_id}/decline", headers=_auth(renter_token))
+        decline_resp = await client.patch(f"/api/v1/orders/{order_id}/decline", headers=_auth(renter_token))
         assert decline_resp.status_code == 400
 
         # Try to cancel rejected order (by user)
-        cancel_resp = await client.patch(f"/orders/{order_id}/cancel", headers=_auth(renter_token))
+        cancel_resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert cancel_resp.status_code == 400
 
         # Try to cancel rejected order (by org)
         org_cancel_resp = await client.patch(
-            f"/organizations/{org_id}/orders/{order_id}/cancel",
+            f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
             headers=_auth(org_token),
         )
         assert org_cancel_resp.status_code == 400

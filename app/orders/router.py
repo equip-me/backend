@@ -11,7 +11,7 @@ from app.organizations.dependencies import require_org_editor
 from app.organizations.models import Membership
 from app.users.models import User
 
-router = APIRouter()
+router = APIRouter(prefix="/api/v1", tags=["Orders"])
 
 
 # --- User (renter) endpoints ---

@@ -16,7 +16,7 @@ class TestCreateOrganization:
         _, token = await create_user()
         data = _default_org_data()
         resp = await client.post(
-            "/organizations/",
+            "/api/v1/organizations/",
             json=data,
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -37,13 +37,13 @@ class TestCreateOrganization:
         _, token = await create_user()
         data = _default_org_data()
         resp = await client.post(
-            "/organizations/",
+            "/api/v1/organizations/",
             json=data,
             headers={"Authorization": f"Bearer {token}"},
         )
         org_id = resp.json()["id"]
         members_resp = await client.get(
-            f"/organizations/{org_id}/members",
+            f"/api/v1/organizations/{org_id}/members",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert members_resp.status_code == 200
@@ -60,20 +60,20 @@ class TestCreateOrganization:
         _, token1 = await create_user()
         _, token2 = await create_user(email="other@example.com")
         data = _default_org_data()
-        await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token1}"})
-        resp = await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token2}"})
+        await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token1}"})
+        resp = await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token2}"})
         assert resp.status_code == 409
 
     async def test_create_org_invalid_inn(self, client: AsyncClient, create_user: Any) -> None:
         _, token = await create_user()
         data = _default_org_data(inn="123")
-        resp = await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
+        resp = await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 422
 
     async def test_create_org_no_contacts(self, client: AsyncClient, create_user: Any) -> None:
         _, token = await create_user()
         data = _default_org_data(contacts=[])
-        resp = await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
+        resp = await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 422
 
     async def test_create_org_contact_missing_phone_and_email(
@@ -83,7 +83,7 @@ class TestCreateOrganization:
     ) -> None:
         _, token = await create_user()
         data = _default_org_data(contacts=[{"display_name": "Test"}])
-        resp = await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
+        resp = await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 422
 
     async def test_create_org_dadata_failure(
@@ -95,7 +95,7 @@ class TestCreateOrganization:
         mock_dadata.find_by_id.side_effect = Exception("Dadata unavailable")
         _, token = await create_user()
         data = _default_org_data()
-        resp = await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
+        resp = await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 502
 
     async def test_create_org_dadata_empty(
@@ -107,32 +107,32 @@ class TestCreateOrganization:
         mock_dadata.find_by_id.return_value = []
         _, token = await create_user()
         data = _default_org_data()
-        resp = await client.post("/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
+        resp = await client.post("/api/v1/organizations/", json=data, headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 502
 
     async def test_create_org_unauthenticated(self, client: AsyncClient) -> None:
         data = _default_org_data()
-        resp = await client.post("/organizations/", json=data)
+        resp = await client.post("/api/v1/organizations/", json=data)
         assert resp.status_code == 401
 
 
 class TestGetOrganization:
     async def test_get_org_by_id(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, _ = await create_organization()
-        resp = await client.get(f"/organizations/{org_data['id']}")
+        resp = await client.get(f"/api/v1/organizations/{org_data['id']}")
         assert resp.status_code == 200
         assert resp.json()["inn"] == "7707083893"
         assert len(resp.json()["contacts"]) == 1
 
     async def test_get_org_not_found(self, client: AsyncClient) -> None:
-        resp = await client.get("/organizations/ZZZZZZ")
+        resp = await client.get("/api/v1/organizations/ZZZZZZ")
         assert resp.status_code == 404
 
 
 class TestListUserOrganizations:
     async def test_list_my_orgs(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
-        resp = await client.get("/users/me/organizations", headers={"Authorization": f"Bearer {token}"})
+        resp = await client.get("/api/v1/users/me/organizations", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
         orgs = resp.json()
         assert len(orgs) == 1
@@ -140,12 +140,12 @@ class TestListUserOrganizations:
 
     async def test_list_my_orgs_empty(self, client: AsyncClient, create_user: Any) -> None:
         _, token = await create_user()
-        resp = await client.get("/users/me/organizations", headers={"Authorization": f"Bearer {token}"})
+        resp = await client.get("/api/v1/users/me/organizations", headers={"Authorization": f"Bearer {token}"})
         assert resp.status_code == 200
         assert resp.json() == []
 
     async def test_list_my_orgs_unauthenticated(self, client: AsyncClient) -> None:
-        resp = await client.get("/users/me/organizations")
+        resp = await client.get("/api/v1/users/me/organizations")
         assert resp.status_code == 401
 
 
@@ -159,7 +159,7 @@ class TestReplaceContacts:
             ],
         }
         resp = await client.put(
-            f"/organizations/{org_data['id']}/contacts",
+            f"/api/v1/organizations/{org_data['id']}/contacts",
             json=new_contacts,
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -172,7 +172,7 @@ class TestReplaceContacts:
     async def test_replace_contacts_empty_list(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
         resp = await client.put(
-            f"/organizations/{org_data['id']}/contacts",
+            f"/api/v1/organizations/{org_data['id']}/contacts",
             json={"contacts": []},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -184,7 +184,7 @@ class TestReplaceContacts:
         org_data, _ = await create_organization()
         _, other_token = await create_user(email="other@example.com")
         resp = await client.put(
-            f"/organizations/{org_data['id']}/contacts",
+            f"/api/v1/organizations/{org_data['id']}/contacts",
             json={"contacts": [{"display_name": "Test", "phone": "+79991112233"}]},
             headers={"Authorization": f"Bearer {other_token}"},
         )
@@ -193,7 +193,7 @@ class TestReplaceContacts:
     async def test_replace_contacts_org_not_found(self, client: AsyncClient, create_user: Any) -> None:
         _, token = await create_user()
         resp = await client.put(
-            "/organizations/ZZZZZZ/contacts",
+            "/api/v1/organizations/ZZZZZZ/contacts",
             json={"contacts": [{"display_name": "Test", "phone": "+79991112233"}]},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -213,7 +213,7 @@ class TestPaymentDetails:
     async def test_create_payment_details(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
         resp = await client.post(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             json=_PAYMENT_DATA,
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -226,13 +226,13 @@ class TestPaymentDetails:
     async def test_upsert_payment_details(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
         await client.post(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             json=_PAYMENT_DATA,
             headers={"Authorization": f"Bearer {token}"},
         )
         updated = {**_PAYMENT_DATA, "bank_name": "АО Тинькофф Банк"}
         resp = await client.post(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             json=updated,
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -242,12 +242,12 @@ class TestPaymentDetails:
     async def test_get_payment_details(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
         await client.post(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             json=_PAYMENT_DATA,
             headers={"Authorization": f"Bearer {token}"},
         )
         resp = await client.get(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -256,7 +256,7 @@ class TestPaymentDetails:
     async def test_get_payment_details_not_set(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
         resp = await client.get(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
@@ -267,7 +267,7 @@ class TestPaymentDetails:
         org_data, _ = await create_organization()
         _, other_token = await create_user(email="other@example.com")
         resp = await client.post(
-            f"/organizations/{org_data['id']}/payment-details",
+            f"/api/v1/organizations/{org_data['id']}/payment-details",
             json=_PAYMENT_DATA,
             headers={"Authorization": f"Bearer {other_token}"},
         )
@@ -279,7 +279,7 @@ class TestMembershipInvite:
         org_data, admin_token = await create_organization()
         user_data, _ = await create_user(email="invitee@example.com")
         resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -292,7 +292,7 @@ class TestMembershipInvite:
     async def test_invite_nonexistent_user(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, admin_token = await create_organization()
         resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": "ZZZZZZ", "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -302,12 +302,12 @@ class TestMembershipInvite:
         org_data, admin_token = await create_organization()
         user_data, _ = await create_user(email="invitee@example.com")
         await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "viewer"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -318,7 +318,7 @@ class TestMembershipInvite:
         _, other_token = await create_user(email="nonadmin@example.com")
         user_data, _ = await create_user(email="invitee@example.com")
         resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {other_token}"},
         )
@@ -330,7 +330,7 @@ class TestMembershipJoin:
         org_data, _ = await create_organization()
         _, user_token = await create_user(email="joiner@example.com")
         resp = await client.post(
-            f"/organizations/{org_data['id']}/members/join",
+            f"/api/v1/organizations/{org_data['id']}/members/join",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 200
@@ -341,7 +341,7 @@ class TestMembershipJoin:
     async def test_join_duplicate(self, client: AsyncClient, create_organization: Any, create_user: Any) -> None:
         org_data, _ = await create_organization()
         _, user_token = await create_user(email="joiner@example.com")
-        join_url = f"/organizations/{org_data['id']}/members/join"
+        join_url = f"/api/v1/organizations/{org_data['id']}/members/join"
         auth = {"Authorization": f"Bearer {user_token}"}
         await client.post(join_url, headers=auth)
         resp = await client.post(join_url, headers=auth)
@@ -349,7 +349,7 @@ class TestMembershipJoin:
 
     async def test_join_already_member(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, admin_token = await create_organization()
-        join_url = f"/organizations/{org_data['id']}/members/join"
+        join_url = f"/api/v1/organizations/{org_data['id']}/members/join"
         resp = await client.post(join_url, headers={"Authorization": f"Bearer {admin_token}"})
         assert resp.status_code == 409
 
@@ -359,7 +359,7 @@ class TestMembershipApprove:
         org_data, admin_token = await create_organization()
         fake_id = "00000000-0000-0000-0000-000000000000"
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{fake_id}/approve",
+            f"/api/v1/organizations/{org_data['id']}/members/{fake_id}/approve",
             json={"role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -369,12 +369,12 @@ class TestMembershipApprove:
         org_data, admin_token = await create_organization()
         _, user_token = await create_user(email="joiner@example.com")
         join_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/join",
+            f"/api/v1/organizations/{org_data['id']}/members/join",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         member_id = join_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/approve",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/approve",
             json={"role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -386,14 +386,14 @@ class TestMembershipApprove:
         org_data, admin_token = await create_organization()
         user_data, _ = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         # Try to approve an INVITED membership (should fail — approve is for CANDIDATE only)
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/approve",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/approve",
             json={"role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -403,13 +403,13 @@ class TestMembershipApprove:
         org_data, _ = await create_organization()
         _, user_token = await create_user(email="joiner@example.com")
         join_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/join",
+            f"/api/v1/organizations/{org_data['id']}/members/join",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         member_id = join_resp.json()["id"]
         # Non-admin tries to approve
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/approve",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/approve",
             json={"role": "editor"},
             headers={"Authorization": f"Bearer {user_token}"},
         )
@@ -422,7 +422,7 @@ class TestMembershipAccept:
         _, user_token = await create_user(email="someone@example.com")
         fake_id = "00000000-0000-0000-0000-000000000000"
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{fake_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{fake_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 404
@@ -431,13 +431,13 @@ class TestMembershipAccept:
         org_data, admin_token = await create_organization()
         user_data, user_token = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 200
@@ -449,13 +449,13 @@ class TestMembershipAccept:
         user_data, _ = await create_user(email="invitee@example.com")
         _, other_token = await create_user(email="other@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {other_token}"},
         )
         assert resp.status_code == 403
@@ -464,13 +464,13 @@ class TestMembershipAccept:
         org_data, _ = await create_organization()
         _, user_token = await create_user(email="joiner@example.com")
         join_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/join",
+            f"/api/v1/organizations/{org_data['id']}/members/join",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         member_id = join_resp.json()["id"]
         # Try to accept a CANDIDATE membership (should fail — accept is for INVITED only)
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 400
@@ -481,7 +481,7 @@ class TestMembershipRoleChange:
         org_data, admin_token = await create_organization()
         fake_id = "00000000-0000-0000-0000-000000000000"
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{fake_id}/role",
+            f"/api/v1/organizations/{org_data['id']}/members/{fake_id}/role",
             json={"role": "viewer"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -491,17 +491,17 @@ class TestMembershipRoleChange:
         org_data, admin_token = await create_organization()
         user_data, user_token = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/role",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/role",
             json={"role": "viewer"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -514,14 +514,14 @@ class TestMembershipRoleChange:
         org_data, admin_token = await create_organization()
         user_data, _ = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         # Try to change role of an INVITED membership (not yet a member)
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/role",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/role",
             json={"role": "viewer"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -534,23 +534,23 @@ class TestMembershipRoleChange:
         user_data, user_token = await create_user(email="second_admin@example.com")
         # Invite as editor, accept, then promote to admin
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "admin"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         # Now demote the original admin — should succeed since there are 2 admins
         members_resp = await client.get(
-            f"/organizations/{org_data['id']}/members",
+            f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         original_admin = next(m for m in members_resp.json() if m["id"] != member_id)
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{original_admin['id']}/role",
+            f"/api/v1/organizations/{org_data['id']}/members/{original_admin['id']}/role",
             json={"role": "editor"},
             headers={"Authorization": f"Bearer {user_token}"},
         )
@@ -560,12 +560,12 @@ class TestMembershipRoleChange:
     async def test_demote_last_admin(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, admin_token = await create_organization()
         members_resp = await client.get(
-            f"/organizations/{org_data['id']}/members",
+            f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         admin_member_id = members_resp.json()[0]["id"]
         resp = await client.patch(
-            f"/organizations/{org_data['id']}/members/{admin_member_id}/role",
+            f"/api/v1/organizations/{org_data['id']}/members/{admin_member_id}/role",
             json={"role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -577,7 +577,7 @@ class TestMembershipRemove:
         org_data, admin_token = await create_organization()
         fake_id = "00000000-0000-0000-0000-000000000000"
         resp = await client.delete(
-            f"/organizations/{org_data['id']}/members/{fake_id}",
+            f"/api/v1/organizations/{org_data['id']}/members/{fake_id}",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 404
@@ -586,17 +586,17 @@ class TestMembershipRemove:
         org_data, admin_token = await create_organization()
         user_data, user_token = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         resp = await client.delete(
-            f"/organizations/{org_data['id']}/members/{member_id}",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 204
@@ -605,17 +605,17 @@ class TestMembershipRemove:
         org_data, admin_token = await create_organization()
         user_data, user_token = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         resp = await client.delete(
-            f"/organizations/{org_data['id']}/members/{member_id}",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 204
@@ -623,12 +623,12 @@ class TestMembershipRemove:
     async def test_last_admin_cannot_leave(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, admin_token = await create_organization()
         members_resp = await client.get(
-            f"/organizations/{org_data['id']}/members",
+            f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         admin_member_id = members_resp.json()[0]["id"]
         resp = await client.delete(
-            f"/organizations/{org_data['id']}/members/{admin_member_id}",
+            f"/api/v1/organizations/{org_data['id']}/members/{admin_member_id}",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 400
@@ -639,24 +639,24 @@ class TestMembershipRemove:
         org_data, admin_token = await create_organization()
         user_data, user_token = await create_user(email="editor@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         # Get admin's member ID
         members_resp = await client.get(
-            f"/organizations/{org_data['id']}/members",
+            f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         admin_member = next(m for m in members_resp.json() if m["role"] == "admin")
         # Editor tries to remove admin
         resp = await client.delete(
-            f"/organizations/{org_data['id']}/members/{admin_member['id']}",
+            f"/api/v1/organizations/{org_data['id']}/members/{admin_member['id']}",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 403
@@ -667,17 +667,17 @@ class TestMembershipList:
         org_data, admin_token = await create_organization()
         user_data, user_token = await create_user(email="invitee@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_data['id']}/members/invite",
+            f"/api/v1/organizations/{org_data['id']}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_data['id']}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_data['id']}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         resp = await client.get(
-            f"/organizations/{org_data['id']}/members",
+            f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 200
@@ -689,7 +689,7 @@ class TestMembershipList:
         org_data, _ = await create_organization()
         _, other_token = await create_user(email="outsider@example.com")
         resp = await client.get(
-            f"/organizations/{org_data['id']}/members",
+            f"/api/v1/organizations/{org_data['id']}/members",
             headers={"Authorization": f"Bearer {other_token}"},
         )
         assert resp.status_code == 403
@@ -703,17 +703,17 @@ class TestRequireOrgEditor:
         org_id = org_data["id"]
         user_data, user_token = await create_user(email="editor@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_id}/members/invite",
+            f"/api/v1/organizations/{org_id}/members/invite",
             json={"user_id": user_data["id"], "role": "editor"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_id}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         resp = await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Editor Category"},
             headers={"Authorization": f"Bearer {user_token}"},
         )
@@ -723,7 +723,7 @@ class TestRequireOrgEditor:
         org_data, admin_token = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Admin Category"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
@@ -734,17 +734,17 @@ class TestRequireOrgEditor:
         org_id = org_data["id"]
         user_data, user_token = await create_user(email="viewer@example.com")
         invite_resp = await client.post(
-            f"/organizations/{org_id}/members/invite",
+            f"/api/v1/organizations/{org_id}/members/invite",
             json={"user_id": user_data["id"], "role": "viewer"},
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         member_id = invite_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/members/{member_id}/accept",
+            f"/api/v1/organizations/{org_id}/members/{member_id}/accept",
             headers={"Authorization": f"Bearer {user_token}"},
         )
         resp = await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Viewer Category"},
             headers={"Authorization": f"Bearer {user_token}"},
         )
@@ -761,7 +761,7 @@ class TestVerifyOrganization:
         org_data, _ = await create_organization()
         _, admin_token = admin_user
         resp = await client.patch(
-            f"/private/organizations/{org_data['id']}/verify",
+            f"/api/v1/private/organizations/{org_data['id']}/verify",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 200
@@ -776,11 +776,11 @@ class TestVerifyOrganization:
         org_data, _ = await create_organization()
         _, admin_token = admin_user
         await client.patch(
-            f"/private/organizations/{org_data['id']}/verify",
+            f"/api/v1/private/organizations/{org_data['id']}/verify",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         resp = await client.patch(
-            f"/private/organizations/{org_data['id']}/verify",
+            f"/api/v1/private/organizations/{org_data['id']}/verify",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 200
@@ -789,7 +789,7 @@ class TestVerifyOrganization:
     async def test_verify_org_not_admin(self, client: AsyncClient, create_organization: Any) -> None:
         org_data, token = await create_organization()
         resp = await client.patch(
-            f"/private/organizations/{org_data['id']}/verify",
+            f"/api/v1/private/organizations/{org_data['id']}/verify",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 403
@@ -801,7 +801,7 @@ class TestVerifyOrganization:
     ) -> None:
         _, admin_token = admin_user
         resp = await client.patch(
-            "/private/organizations/ZZZZZZ/verify",
+            "/api/v1/private/organizations/ZZZZZZ/verify",
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 404

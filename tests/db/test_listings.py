@@ -14,7 +14,7 @@ class TestCreateCategory:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Custom Category"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -32,7 +32,7 @@ class TestCreateCategory:
         org_data, _ = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Fail"},
         )
         assert resp.status_code == 401
@@ -49,11 +49,11 @@ class TestListPublicCategories:
         org_id = org_data["id"]
         # Create an unverified category
         await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Unverified"},
             headers={"Authorization": f"Bearer {token}"},
         )
-        resp = await client.get("/listings/categories/")
+        resp = await client.get("/api/v1/listings/categories/")
         assert resp.status_code == 200
         body = resp.json()
         names = [c["name"] for c in body]
@@ -73,28 +73,28 @@ class TestListPublicCategories:
         # Create 2 published listings in category 0, 1 in category 1
         for _ in range(2):
             create_resp = await client.post(
-                f"/organizations/{org_id}/listings/",
+                f"/api/v1/organizations/{org_id}/listings/",
                 json={"name": "Item", "category_id": seed_categories[0].id, "price": 100.0},
                 headers=headers,
             )
             listing_id = create_resp.json()["id"]
             await client.patch(
-                f"/organizations/{org_id}/listings/{listing_id}/status",
+                f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
                 json={"status": "published"},
                 headers=headers,
             )
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item2", "category_id": seed_categories[1].id, "price": 100.0},
             headers=headers,
         )
         listing_id = create_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers=headers,
         )
-        resp = await client.get("/listings/categories/")
+        resp = await client.get("/api/v1/listings/categories/")
         body = resp.json()
         assert body[0]["listing_count"] >= body[1]["listing_count"]
 
@@ -111,19 +111,19 @@ class TestListOrgCategories:
         headers = {"Authorization": f"Bearer {token}"}
         # Create org-specific category
         cat_resp = await client.post(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             json={"name": "Org Only"},
             headers=headers,
         )
         cat_id = cat_resp.json()["id"]
         # Create a listing in the org category so it shows up
         await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item", "category_id": cat_id, "price": 100.0},
             headers=headers,
         )
         resp = await client.get(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             headers=headers,
         )
         assert resp.status_code == 200
@@ -143,7 +143,7 @@ class TestListOrgCategories:
         org_id = org_data["id"]
         _, outsider_token = await create_user(email="outsider@example.com")
         resp = await client.get(
-            f"/organizations/{org_id}/listings/categories/",
+            f"/api/v1/organizations/{org_id}/listings/categories/",
             headers={"Authorization": f"Bearer {outsider_token}"},
         )
         assert resp.status_code == 403
@@ -159,7 +159,7 @@ class TestCreateListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={
                 "name": "Excavator",
                 "category_id": seed_categories[0].id,
@@ -187,7 +187,7 @@ class TestCreateListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={
                 "name": "Item",
                 "category_id": "BADCAT",
@@ -207,7 +207,7 @@ class TestCreateListing:
         org_a_data, token_a = await create_organization()
         org_a_id = org_a_data["id"]
         cat_resp = await client.post(
-            f"/organizations/{org_a_id}/listings/categories/",
+            f"/api/v1/organizations/{org_a_id}/listings/categories/",
             json={"name": "Org A Only"},
             headers={"Authorization": f"Bearer {token_a}"},
         )
@@ -217,7 +217,7 @@ class TestCreateListing:
         org_b_data, token_b = await create_organization(token=token_b, inn="5001012345")
         org_b_id = org_b_data["id"]
         resp = await client.post(
-            f"/organizations/{org_b_id}/listings/",
+            f"/api/v1/organizations/{org_b_id}/listings/",
             json={
                 "name": "Item",
                 "category_id": cat_id,
@@ -235,7 +235,7 @@ class TestCreateListing:
         org_data, _ = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={
                 "name": "Item",
                 "category_id": "AAAAAA",
@@ -252,7 +252,7 @@ class TestCreateListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"description": "Missing name, category, price"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -269,13 +269,13 @@ class TestUpdateListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Old Name", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
             json={"name": "New Name"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -292,13 +292,13 @@ class TestUpdateListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
             json={"category_id": seed_categories[1].id},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -313,7 +313,7 @@ class TestUpdateListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         resp = await client.patch(
-            f"/organizations/{org_id}/listings/BADID1",
+            f"/api/v1/organizations/{org_id}/listings/BADID1",
             json={"name": "Nope"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -330,19 +330,19 @@ class TestDeleteListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "To Delete", "category_id": seed_categories[0].id, "price": 50.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         resp = await client.delete(
-            f"/organizations/{org_id}/listings/{listing_id}",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 204
         # Verify deletion via HTTP — updating deleted listing should return 404
         get_resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
             json={"name": "Should Fail"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -356,7 +356,7 @@ class TestDeleteListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         resp = await client.delete(
-            f"/organizations/{org_id}/listings/BADID1",
+            f"/api/v1/organizations/{org_id}/listings/BADID1",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
@@ -372,13 +372,13 @@ class TestChangeListingStatus:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -394,13 +394,13 @@ class TestChangeListingStatus:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "archived"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -417,14 +417,14 @@ class TestChangeListingStatus:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         _, outsider_token = await create_user(email="outsider@example.com")
         resp = await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {outsider_token}"},
         )
@@ -442,19 +442,19 @@ class TestListOrgListings:
         org_id = org_data["id"]
         for name, status in [("Hidden", "hidden"), ("Published", "published"), ("Archived", "archived")]:
             create_resp = await client.post(
-                f"/organizations/{org_id}/listings/",
+                f"/api/v1/organizations/{org_id}/listings/",
                 json={"name": name, "category_id": seed_categories[0].id, "price": 100.0},
                 headers={"Authorization": f"Bearer {token}"},
             )
             listing_id = create_resp.json()["id"]
             if status != "hidden":
                 await client.patch(
-                    f"/organizations/{org_id}/listings/{listing_id}/status",
+                    f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
                     json={"status": status},
                     headers={"Authorization": f"Bearer {token}"},
                 )
         resp = await client.get(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -470,7 +470,7 @@ class TestListOrgListings:
         org_id = org_data["id"]
         _, outsider_token = await create_user(email="outsider@example.com")
         resp = await client.get(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             headers={"Authorization": f"Bearer {outsider_token}"},
         )
         assert resp.status_code == 403
@@ -489,13 +489,13 @@ class TestPublicListings:
         org_id = org_data["id"]
         # Create published listing in verified org
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Visible", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -507,24 +507,24 @@ class TestPublicListings:
         )
         unverified_org_id = unverified_org_data["id"]
         create_resp2 = await client.post(
-            f"/organizations/{unverified_org_id}/listings/",
+            f"/api/v1/organizations/{unverified_org_id}/listings/",
             json={"name": "Invisible", "category_id": seed_categories[0].id, "price": 200.0},
             headers={"Authorization": f"Bearer {unverified_token}"},
         )
         listing_id2 = create_resp2.json()["id"]
         await client.patch(
-            f"/organizations/{unverified_org_id}/listings/{listing_id2}/status",
+            f"/api/v1/organizations/{unverified_org_id}/listings/{listing_id2}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {unverified_token}"},
         )
         # Create hidden listing in verified org
         await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Hidden", "category_id": seed_categories[0].id, "price": 50.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         # Public list should only show "Visible"
-        resp = await client.get("/listings/")
+        resp = await client.get("/api/v1/listings/")
         assert resp.status_code == 200
         body = resp.json()
         names = [item["name"] for item in body]
@@ -541,28 +541,28 @@ class TestPublicListings:
         org_data, token = verified_org
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Cat0", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         lid = create_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/listings/{lid}/status",
+            f"/api/v1/organizations/{org_id}/listings/{lid}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {token}"},
         )
         create_resp2 = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Cat1", "category_id": seed_categories[1].id, "price": 200.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         lid2 = create_resp2.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/listings/{lid2}/status",
+            f"/api/v1/organizations/{org_id}/listings/{lid2}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {token}"},
         )
-        resp = await client.get(f"/listings/?category_id={seed_categories[0].id}")
+        resp = await client.get(f"/api/v1/listings/?category_id={seed_categories[0].id}")
         body = resp.json()
         assert len(body) == 1
         assert body[0]["name"] == "Cat0"
@@ -576,17 +576,17 @@ class TestPublicListings:
         org_data, token = verified_org
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "OrgItem", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         lid = create_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/listings/{lid}/status",
+            f"/api/v1/organizations/{org_id}/listings/{lid}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {token}"},
         )
-        resp = await client.get(f"/listings/?organization_id={org_id}")
+        resp = await client.get(f"/api/v1/listings/?organization_id={org_id}")
         body = resp.json()
         assert len(body) == 1
         assert body[0]["organization_id"] == org_id
@@ -602,18 +602,18 @@ class TestGetListing:
         org_data, token = verified_org
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Public Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         await client.patch(
-            f"/organizations/{org_id}/listings/{listing_id}/status",
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},
             headers={"Authorization": f"Bearer {token}"},
         )
         # Access without auth
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.status_code == 200
         assert resp.json()["name"] == "Public Item"
 
@@ -626,13 +626,13 @@ class TestGetListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Private Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         # Access without auth — org is unverified
-        resp = await client.get(f"/listings/{listing_id}")
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.status_code == 403
 
     async def test_get_listing_unverified_org_allowed_for_member(
@@ -644,14 +644,14 @@ class TestGetListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Member Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         # Access with auth as org member
         resp = await client.get(
-            f"/listings/{listing_id}",
+            f"/api/v1/listings/{listing_id}",
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 200
@@ -667,7 +667,7 @@ class TestGetListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Private Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
@@ -675,7 +675,7 @@ class TestGetListing:
         # Authenticated user who is NOT a member of the unverified org
         _, outsider_token = await create_user(email="outsider@example.com")
         resp = await client.get(
-            f"/listings/{listing_id}",
+            f"/api/v1/listings/{listing_id}",
             headers={"Authorization": f"Bearer {outsider_token}"},
         )
         assert resp.status_code == 403
@@ -689,14 +689,14 @@ class TestGetListing:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         create_resp = await client.post(
-            f"/organizations/{org_id}/listings/",
+            f"/api/v1/organizations/{org_id}/listings/",
             json={"name": "Private Item", "category_id": seed_categories[0].id, "price": 100.0},
             headers={"Authorization": f"Bearer {token}"},
         )
         listing_id = create_resp.json()["id"]
         # Invalid token — org is unverified, should be denied (treated as no auth)
         resp = await client.get(
-            f"/listings/{listing_id}",
+            f"/api/v1/listings/{listing_id}",
             headers={"Authorization": "Bearer invalidtoken"},
         )
         assert resp.status_code == 403
@@ -705,5 +705,5 @@ class TestGetListing:
         self,
         client: AsyncClient,
     ) -> None:
-        resp = await client.get("/listings/BADID1")
+        resp = await client.get("/api/v1/listings/BADID1")
         assert resp.status_code == 404

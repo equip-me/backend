@@ -132,7 +132,7 @@ async def test_storage_delete_prefix(storage: StorageClient) -> None:
 async def test_request_upload_url(client: AsyncClient, create_user: Any, mock_storage: AsyncMock) -> None:  # noqa: ARG001
     _, token = await create_user()
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -156,7 +156,7 @@ async def test_upload_url_rejects_invalid_content_type(
 ) -> None:
     _, token = await create_user()
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -176,7 +176,7 @@ async def test_upload_url_rejects_oversized_file(
 ) -> None:
     _, token = await create_user()
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -191,7 +191,7 @@ async def test_upload_url_rejects_oversized_file(
 
 async def test_upload_url_requires_auth(client: AsyncClient, mock_storage: AsyncMock) -> None:  # noqa: ARG001
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -207,7 +207,7 @@ async def test_confirm_upload(client: AsyncClient, create_user: Any, mock_storag
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "document",
             "context": "listing",
@@ -220,7 +220,7 @@ async def test_confirm_upload(client: AsyncClient, create_user: Any, mock_storag
     media_id = resp.json()["media_id"]
 
     confirm_resp = await client.post(
-        f"/media/{media_id}/confirm",
+        f"/api/v1/media/{media_id}/confirm",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -234,7 +234,7 @@ async def test_confirm_rejects_non_uploader(client: AsyncClient, create_user: An
     _, token2 = await create_user(email="other@example.com", phone="+79001112233")
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -247,7 +247,7 @@ async def test_confirm_rejects_non_uploader(client: AsyncClient, create_user: An
     media_id = resp.json()["media_id"]
 
     confirm_resp = await client.post(
-        f"/media/{media_id}/confirm",
+        f"/api/v1/media/{media_id}/confirm",
         headers={"Authorization": f"Bearer {token2}"},
     )
 
@@ -258,7 +258,7 @@ async def test_get_media_status(client: AsyncClient, create_user: Any, mock_stor
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -271,7 +271,7 @@ async def test_get_media_status(client: AsyncClient, create_user: Any, mock_stor
     media_id = resp.json()["media_id"]
 
     status_resp = await client.get(
-        f"/media/{media_id}/status",
+        f"/api/v1/media/{media_id}/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert status_resp.status_code == 200
@@ -282,7 +282,7 @@ async def test_delete_media(client: AsyncClient, create_user: Any, mock_storage:
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -295,13 +295,13 @@ async def test_delete_media(client: AsyncClient, create_user: Any, mock_storage:
     media_id = resp.json()["media_id"]
 
     del_resp = await client.delete(
-        f"/media/{media_id}",
+        f"/api/v1/media/{media_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert del_resp.status_code == 204
 
     status_resp = await client.get(
-        f"/media/{media_id}/status",
+        f"/api/v1/media/{media_id}/status",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert status_resp.status_code == 404
@@ -311,7 +311,7 @@ async def test_retry_failed_media(client: AsyncClient, create_user: Any, mock_st
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -326,7 +326,7 @@ async def test_retry_failed_media(client: AsyncClient, create_user: Any, mock_st
     await Media.filter(id=UUID(media_id)).update(status=MediaStatus.FAILED)
 
     retry_resp = await client.post(
-        f"/media/{media_id}/retry",
+        f"/api/v1/media/{media_id}/retry",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert retry_resp.status_code == 200
@@ -360,7 +360,7 @@ async def test_update_user_with_profile_photo(client: AsyncClient, create_user: 
     photo_id = await _create_ready_photo(user_data["id"])
 
     resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(photo_id)},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -376,12 +376,12 @@ async def test_user_read_includes_profile_photo(client: AsyncClient, create_user
     photo_id = await _create_ready_photo(user_data["id"])
 
     await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(photo_id)},
         headers={"Authorization": f"Bearer {token}"},
     )
 
-    resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     assert resp.status_code == 200
     assert resp.json()["profile_photo"] is not None
 
@@ -391,13 +391,13 @@ async def test_remove_profile_photo(client: AsyncClient, create_user: Any) -> No
     photo_id = await _create_ready_photo(user_data["id"])
 
     await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(photo_id)},
         headers={"Authorization": f"Bearer {token}"},
     )
 
     resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": None},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -413,7 +413,7 @@ async def test_org_read_includes_photo(client: AsyncClient, create_organization:
     org_data, token = await create_organization()
     org_id = org_data["id"]
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
     photo_id = await _create_ready_photo(user_id, "org_profile")
     await Media.filter(id=photo_id).update(
@@ -422,7 +422,7 @@ async def test_org_read_includes_photo(client: AsyncClient, create_organization:
     )
 
     resp = await client.get(
-        f"/organizations/{org_id}",
+        f"/api/v1/organizations/{org_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
 
@@ -435,12 +435,12 @@ async def test_update_org_photo(client: AsyncClient, create_organization: Any) -
     org_data, token = await create_organization()
     org_id = org_data["id"]
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
     photo_id = await _create_ready_photo(user_id, "org_profile")
 
     resp = await client.patch(
-        f"/organizations/{org_id}/photo",
+        f"/api/v1/organizations/{org_id}/photo",
         json={"photo_id": str(photo_id)},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -462,13 +462,13 @@ async def test_create_listing_with_media(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
 
     photo_id = await _create_ready_photo(user_id, "listing")
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator with photos",
             "category_id": category_id,
@@ -493,7 +493,7 @@ async def test_listing_detail_includes_all_photo_variants(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
 
     # Create photo with listing variants (large+medium+small)
@@ -517,7 +517,7 @@ async def test_listing_detail_includes_all_photo_variants(
     )
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator detail test",
             "category_id": category_id,
@@ -529,7 +529,7 @@ async def test_listing_detail_includes_all_photo_variants(
     assert resp.status_code == 201
 
     listing_id = resp.json()["id"]
-    detail = await client.get(f"/listings/{listing_id}")
+    detail = await client.get(f"/api/v1/listings/{listing_id}")
     assert detail.status_code == 200
     photos = detail.json()["photos"]
     assert len(photos) == 1
@@ -547,12 +547,12 @@ async def test_update_listing_media(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
 
     # Create listing without media
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator update media test",
             "category_id": category_id,
@@ -567,7 +567,7 @@ async def test_update_listing_media(
     # Add a photo via update
     photo_id = await _create_ready_photo(user_id, "listing")
     patch_resp = await client.patch(
-        f"/organizations/{org_id}/listings/{listing_id}",
+        f"/api/v1/organizations/{org_id}/listings/{listing_id}",
         json={"photo_ids": [str(photo_id)]},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -576,7 +576,7 @@ async def test_update_listing_media(
 
     # Remove all photos via update
     patch_resp2 = await client.patch(
-        f"/organizations/{org_id}/listings/{listing_id}",
+        f"/api/v1/organizations/{org_id}/listings/{listing_id}",
         json={"photo_ids": []},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -594,7 +594,7 @@ async def test_listing_without_media_returns_empty_arrays(
     category_id = seed_categories[0].id
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Excavator no media",
             "category_id": category_id,
@@ -621,12 +621,12 @@ async def test_delete_listing_cleans_up_media(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
     photo_id = await _create_ready_photo(user_id, "listing")
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "To be deleted",
             "category_id": category_id,
@@ -639,7 +639,7 @@ async def test_delete_listing_cleans_up_media(
     listing_id = resp.json()["id"]
 
     del_resp = await client.delete(
-        f"/organizations/{org_id}/listings/{listing_id}",
+        f"/api/v1/organizations/{org_id}/listings/{listing_id}",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert del_resp.status_code == 204
@@ -745,7 +745,7 @@ async def test_upload_url_rejects_empty_filename(
 ) -> None:
     _, token = await create_user()
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -765,7 +765,7 @@ async def test_upload_url_rejects_path_traversal_filename(
 ) -> None:
     _, token = await create_user()
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -788,7 +788,7 @@ async def test_confirm_rejects_wrong_status(
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -804,7 +804,7 @@ async def test_confirm_rejects_wrong_status(
     await Media.filter(id=UUID(media_id)).update(status=MediaStatus.PROCESSING)
 
     confirm_resp = await client.post(
-        f"/media/{media_id}/confirm",
+        f"/api/v1/media/{media_id}/confirm",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert confirm_resp.status_code == 400
@@ -818,7 +818,7 @@ async def test_confirm_rejects_missing_file(
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -834,7 +834,7 @@ async def test_confirm_rejects_missing_file(
     mock_storage.exists.side_effect = [False]
 
     confirm_resp = await client.post(
-        f"/media/{media_id}/confirm",
+        f"/api/v1/media/{media_id}/confirm",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert confirm_resp.status_code == 404
@@ -851,7 +851,7 @@ async def test_retry_rejects_non_failed(
     _, token = await create_user()
 
     resp = await client.post(
-        "/media/upload-url",
+        "/api/v1/media/upload-url",
         json={
             "kind": "photo",
             "context": "user_profile",
@@ -867,7 +867,7 @@ async def test_retry_rejects_non_failed(
     await Media.filter(id=UUID(media_id)).update(status=MediaStatus.READY)
 
     retry_resp = await client.post(
-        f"/media/{media_id}/retry",
+        f"/api/v1/media/{media_id}/retry",
         headers={"Authorization": f"Bearer {token}"},
     )
     assert retry_resp.status_code == 400
@@ -890,7 +890,7 @@ async def test_attach_profile_photo_not_ready(client: AsyncClient, create_user: 
     )
 
     resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(media_id)},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -904,7 +904,7 @@ async def test_attach_profile_photo_wrong_uploader(client: AsyncClient, create_u
     photo_id = await _create_ready_photo(user_data_a["id"])
 
     resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(photo_id)},
         headers={"Authorization": f"Bearer {token_b}"},
     )
@@ -929,7 +929,7 @@ async def test_attach_profile_photo_not_photo(client: AsyncClient, create_user: 
     )
 
     resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(media_id)},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -940,7 +940,7 @@ async def test_attach_profile_photo_nonexistent(client: AsyncClient, create_user
     _, token = await create_user()
 
     resp = await client.patch(
-        "/users/me",
+        "/api/v1/users/me",
         json={"profile_photo_id": str(uuid4())},
         headers={"Authorization": f"Bearer {token}"},
     )
@@ -959,7 +959,7 @@ async def test_attach_listing_media_exceeds_photo_limit(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
 
     # Create 21 ready photos (limit is 20)
@@ -969,7 +969,7 @@ async def test_attach_listing_media_exceeds_photo_limit(
         photo_ids.append(str(pid))
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Too many photos",
             "category_id": category_id,
@@ -990,7 +990,7 @@ async def test_attach_listing_media_wrong_kind(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
     user = await User.get(id=user_id)
 
@@ -1011,7 +1011,7 @@ async def test_attach_listing_media_wrong_kind(
 
     # Pass video_id in photo_ids list
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Wrong kind test",
             "category_id": category_id,
@@ -1032,7 +1032,7 @@ async def test_attach_listing_media_not_ready(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
     user = await User.get(id=user_id)
 
@@ -1051,7 +1051,7 @@ async def test_attach_listing_media_not_ready(
     )
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Not ready test",
             "category_id": category_id,
@@ -1078,7 +1078,7 @@ async def test_attach_listing_media_wrong_uploader(
     photo_id = await _create_ready_photo(other_data["id"], "listing")
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Wrong uploader test",
             "category_id": category_id,
@@ -1138,13 +1138,13 @@ async def test_get_listing_media_with_videos(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
 
     video_id = await _create_ready_video(user_id)
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Video listing",
             "category_id": category_id,
@@ -1156,7 +1156,7 @@ async def test_get_listing_media_with_videos(
     assert resp.status_code == 201
     listing_id = resp.json()["id"]
 
-    detail = await client.get(f"/listings/{listing_id}")
+    detail = await client.get(f"/api/v1/listings/{listing_id}")
     assert detail.status_code == 200
     videos = detail.json()["videos"]
     assert len(videos) == 1
@@ -1173,13 +1173,13 @@ async def test_get_listing_media_with_documents(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    user_resp = await client.get("/users/me", headers={"Authorization": f"Bearer {token}"})
+    user_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token}"})
     user_id = user_resp.json()["id"]
 
     doc_id = await _create_ready_document(user_id)
 
     resp = await client.post(
-        f"/organizations/{org_id}/listings/",
+        f"/api/v1/organizations/{org_id}/listings/",
         json={
             "name": "Document listing",
             "category_id": category_id,
@@ -1191,7 +1191,7 @@ async def test_get_listing_media_with_documents(
     assert resp.status_code == 201
     listing_id = resp.json()["id"]
 
-    detail = await client.get(f"/listings/{listing_id}")
+    detail = await client.get(f"/api/v1/listings/{listing_id}")
     assert detail.status_code == 200
     documents = detail.json()["documents"]
     assert len(documents) == 1
