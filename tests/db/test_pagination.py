@@ -66,7 +66,7 @@ async def test_paginate_ascending_ordering(create_user: Any) -> None:
     assert has_more1 is True
     assert cursor1 is not None
 
-    items2, cursor2, has_more2 = await paginate(
+    items2, _cursor2, has_more2 = await paginate(
         User.all(),
         CursorParams(cursor=cursor1, limit=3),
         ordering=("created_at", "id"),
