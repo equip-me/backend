@@ -63,6 +63,10 @@ async def decline_order(
 async def cancel_order_by_user(
     order: Annotated[Order, Depends(require_order_requester)],
 ) -> OrderRead:
+    """Cancel a confirmed or active order.
+
+    Returns listing to published status if it was in_rent.
+    """
     return await service.cancel_order_by_user(order)
 
 
@@ -95,6 +99,10 @@ async def offer_order(
     data: OrderOffer,
     _membership: Annotated[Membership, Depends(require_org_editor)],
 ) -> OrderRead:
+    """Offer or re-offer rental terms to the renter.
+
+    Allowed from pending or offered status. Org Editor only.
+    """
     return await service.offer_order(order, data)
 
 
@@ -111,4 +119,8 @@ async def cancel_order_by_org(
     order: Annotated[Order, Depends(get_org_order_or_404)],
     _membership: Annotated[Membership, Depends(require_org_editor)],
 ) -> OrderRead:
+    """Cancel a confirmed or active order.
+
+    Returns listing to published status if it was in_rent. Org Editor only.
+    """
     return await service.cancel_order_by_org(order)
