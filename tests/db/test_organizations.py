@@ -3,6 +3,7 @@ from unittest.mock import MagicMock
 
 from httpx import AsyncClient
 
+from app.listings.models import ListingCategory
 from tests.conftest import _default_org_data
 
 
@@ -749,6 +750,103 @@ class TestRequireOrgEditor:
             headers={"Authorization": f"Bearer {user_token}"},
         )
         assert resp.status_code == 403
+
+
+class TestListPublicOrganizations:
+    async def test_list_only_verified(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        create_user: Any,
+    ) -> None:
+        # verified_org creates a verified org; create another unverified org
+        _, other_token = await create_user(email="other@example.com")
+        data = _default_org_data(inn="7728168971")
+        resp = await client.post(
+            "/api/v1/organizations/",
+            json=data,
+            headers={"Authorization": f"Bearer {other_token}"},
+        )
+        assert resp.status_code == 200
+
+        list_resp = await client.get("/api/v1/organizations/")
+        assert list_resp.status_code == 200
+        body = list_resp.json()
+        assert len(body["items"]) == 1
+        assert body["items"][0]["id"] == verified_org[0]["id"]
+        assert body["items"][0]["status"] == "verified"
+
+    async def test_list_with_published_listing_count(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, org_token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+
+        # Create and publish a listing
+        create_resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={
+                "name": "Excavator CAT 320",
+                "category_id": category_id,
+                "price": 5000.00,
+                "description": "Heavy excavator for rent",
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert create_resp.status_code == 201
+        listing_id = create_resp.json()["id"]
+
+        patch_resp = await client.patch(
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert patch_resp.status_code == 200
+
+        list_resp = await client.get("/api/v1/organizations/")
+        assert list_resp.status_code == 200
+        body = list_resp.json()
+        assert len(body["items"]) == 1
+        assert body["items"][0]["published_listing_count"] == 1
+
+    async def test_list_search_by_name(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+    ) -> None:
+        org_data, _ = verified_org
+        # Search by substring of short_name set by dadata mock
+        list_resp = await client.get("/api/v1/organizations/", params={"search": "Рога"})
+        assert list_resp.status_code == 200
+        body = list_resp.json()
+        assert len(body["items"]) == 1
+        assert body["items"][0]["id"] == org_data["id"]
+
+    async def test_list_search_no_results(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+    ) -> None:
+        list_resp = await client.get("/api/v1/organizations/", params={"search": "НесуществующееНазвание"})
+        assert list_resp.status_code == 200
+        body = list_resp.json()
+        assert len(body["items"]) == 0
+
+    async def test_list_pagination(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+    ) -> None:
+        list_resp = await client.get("/api/v1/organizations/")
+        assert list_resp.status_code == 200
+        body = list_resp.json()
+        assert "items" in body
+        assert "next_cursor" in body
+        assert "has_more" in body
 
 
 class TestVerifyOrganization:

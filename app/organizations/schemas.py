@@ -72,6 +72,18 @@ class OrganizationRead(BaseModel):
     photo: ProfilePhotoRead | None = None
 
 
+class OrganizationListRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: str
+    inn: str
+    short_name: str | None
+    full_name: str | None
+    status: OrganizationStatus
+    photo: ProfilePhotoRead | None = None
+    published_listing_count: int = 0
+
+
 class OrganizationPhotoUpdate(BaseModel):
     photo_id: UUID | None = None
 

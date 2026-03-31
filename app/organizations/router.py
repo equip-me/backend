@@ -4,7 +4,9 @@ from dadata import Dadata
 from fastapi import APIRouter, Depends
 
 from app.core.dependencies import require_active_user
-from app.core.enums import MediaOwnerType
+from app.core.enums import ListingStatus, MediaOwnerType
+from app.core.pagination import CursorParams, PaginatedResponse
+from app.listings.models import Listing
 from app.media import service as media_service
 from app.media.storage import StorageClient, get_storage
 from app.organizations import service
@@ -14,6 +16,7 @@ from app.organizations.schemas import (
     ContactRead,
     ContactsReplace,
     OrganizationCreate,
+    OrganizationListRead,
     OrganizationPhotoUpdate,
     OrganizationRead,
     PaymentDetailsCreate,
@@ -34,6 +37,38 @@ async def create_organization(
     org_read = await service.create_organization(data, user, dadata)
     org_read.photo = await media_service.get_profile_photo(MediaOwnerType.ORGANIZATION, org_read.id, storage)
     return org_read
+
+
+@router.get("/", response_model=PaginatedResponse[OrganizationListRead])
+async def list_organizations(
+    storage: Annotated[StorageClient, Depends(get_storage)],
+    cursor: str | None = None,
+    limit: int = 20,
+    search: str | None = None,
+) -> PaginatedResponse[OrganizationListRead]:
+    """Browse verified organizations with published listing count."""
+    params = CursorParams(cursor=cursor, limit=limit)
+    items, next_cursor, has_more = await service.list_public_organizations(params, search=search)
+
+    org_reads: list[OrganizationListRead] = []
+    for org in items:
+        published_count = await Listing.filter(
+            organization=org,
+            status=ListingStatus.PUBLISHED,
+        ).count()
+        photo = await media_service.get_profile_photo(MediaOwnerType.ORGANIZATION, org.id, storage)
+        org_read = OrganizationListRead(
+            id=org.id,
+            inn=org.inn,
+            short_name=org.short_name,
+            full_name=org.full_name,
+            status=org.status,
+            photo=photo,
+            published_listing_count=published_count,
+        )
+        org_reads.append(org_read)
+
+    return PaginatedResponse(items=org_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @router.get("/{org_id}", response_model=OrganizationRead)

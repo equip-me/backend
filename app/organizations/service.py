@@ -5,6 +5,7 @@ from typing import Any
 from uuid import uuid4
 
 from dadata import Dadata
+from tortoise.expressions import Q
 from tortoise.transactions import in_transaction
 
 from app.core.enums import MembershipRole, MembershipStatus, OrganizationStatus
@@ -16,6 +17,7 @@ from app.core.exceptions import (
     PermissionDeniedError,
 )
 from app.core.identifiers import create_with_short_id
+from app.core.pagination import CursorParams, paginate
 from app.observability.events import emit_event
 from app.observability.metrics import dadata_duration, dadata_requests
 from app.observability.tracing import traced
@@ -132,6 +134,17 @@ async def list_user_organizations(user: User) -> list[OrganizationRead]:
         status=MembershipStatus.MEMBER,
     ).prefetch_related("organization__contacts")
     return [OrganizationRead.model_validate(m.organization) for m in memberships]
+
+
+@traced
+async def list_public_organizations(
+    params: CursorParams,
+    search: str | None = None,
+) -> tuple[list[Organization], str | None, bool]:
+    qs = Organization.filter(status=OrganizationStatus.VERIFIED)
+    if search:
+        qs = qs.filter(Q(short_name__icontains=search) | Q(full_name__icontains=search))
+    return await paginate(qs, params, ordering=("-created_at", "-id"))
 
 
 @traced
