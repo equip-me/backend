@@ -670,7 +670,7 @@ class TestListOrders:
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 2
+        assert len(resp.json()["items"]) == 2
 
     async def test_list_user_orders_empty(
         self,
@@ -682,7 +682,7 @@ class TestListOrders:
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
-        assert resp.json() == []
+        assert resp.json()["items"] == []
 
     async def test_list_org_orders(
         self,
@@ -698,7 +698,7 @@ class TestListOrders:
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
-        assert len(resp.json()) == 1
+        assert len(resp.json()["items"]) == 1
 
     async def test_list_org_orders_unauthorized(
         self,
@@ -713,6 +713,38 @@ class TestListOrders:
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 403
+
+    async def test_list_user_orders_filter_by_status(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        await _create_order(client, listing_id, renter_token)
+        order2 = await _create_order(client, listing_id, renter_token, start_offset=10)
+
+        # Offer the second order so it changes to "offered" status
+        start = _today() + timedelta(days=2)
+        end = start + timedelta(days=5)
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order2['id']}/offer",
+            json={
+                "offered_cost": "30000.00",
+                "offered_start_date": start.isoformat(),
+                "offered_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+
+        resp = await client.get(
+            "/api/v1/orders/?status=pending",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert all(o["status"] == "pending" for o in items)
+        assert len(items) == 1
 
 
 @pytest.mark.anyio

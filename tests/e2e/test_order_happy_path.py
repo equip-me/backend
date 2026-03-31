@@ -371,7 +371,7 @@ class TestOrderHappyPaths:
 
         list_resp = await client.get("/api/v1/orders/", headers=_auth(renter_token))
         assert list_resp.status_code == 200
-        assert len(list_resp.json()) == 2
+        assert len(list_resp.json()["items"]) == 2
 
     async def test_list_org_orders(self, client: httpx.AsyncClient) -> None:
         """Scenario 7: org sees orders via /organizations/{org_id}/orders/."""
@@ -389,8 +389,8 @@ class TestOrderHappyPaths:
             headers=_auth(org_token),
         )
         assert list_resp.status_code == 200
-        assert len(list_resp.json()) == 1
-        assert list_resp.json()[0]["listing_id"] == listing_id
+        assert len(list_resp.json()["items"]) == 1
+        assert list_resp.json()["items"][0]["listing_id"] == listing_id
 
     async def test_get_order_detail_both_sides(self, client: httpx.AsyncClient) -> None:
         """Scenario 8: both renter and org can view order detail."""

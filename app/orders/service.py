@@ -4,6 +4,7 @@ from decimal import ROUND_HALF_UP, Decimal
 from app.core.enums import ListingStatus, OrderAction, OrderStatus, OrganizationStatus
 from app.core.exceptions import AppValidationError, NotFoundError, PermissionDeniedError
 from app.core.identifiers import create_with_short_id
+from app.core.pagination import CursorParams, PaginatedResponse, paginate
 from app.listings.models import Listing
 from app.observability.events import emit_event
 from app.observability.metrics import order_transitions, orders_created
@@ -160,12 +161,28 @@ async def get_order(order: Order) -> OrderRead:
 
 
 @traced
-async def list_user_orders(user: User) -> list[OrderRead]:
-    orders = await Order.filter(requester=user).prefetch_related("listing").order_by("-updated_at")
-    return [await _to_read(order) for order in orders]
+async def list_user_orders(
+    user: User,
+    params: CursorParams,
+    status: OrderStatus | None = None,
+) -> PaginatedResponse[OrderRead]:
+    qs = Order.filter(requester=user).prefetch_related("listing")
+    if status:
+        qs = qs.filter(status=status)
+    items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
+    order_reads = [await _to_read(order) for order in items]
+    return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @traced
-async def list_org_orders(org_id: str) -> list[OrderRead]:
-    orders = await Order.filter(organization_id=org_id).prefetch_related("listing").order_by("-updated_at")
-    return [await _to_read(order) for order in orders]
+async def list_org_orders(
+    org_id: str,
+    params: CursorParams,
+    status: OrderStatus | None = None,
+) -> PaginatedResponse[OrderRead]:
+    qs = Order.filter(organization_id=org_id).prefetch_related("listing")
+    if status:
+        qs = qs.filter(status=status)
+    items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
+    order_reads = [await _to_read(order) for order in items]
+    return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)

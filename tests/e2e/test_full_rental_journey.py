@@ -570,7 +570,7 @@ async def test_full_rental_journey(
         # All orders in expected statuses
         my_orders_resp = await client.get("/api/v1/orders/", headers=_auth(renter_token))
         assert my_orders_resp.status_code == 200
-        my_orders = my_orders_resp.json()
+        my_orders = my_orders_resp.json()["items"]
         assert len(my_orders) == 3
 
         order_statuses = {o["id"]: o["status"] for o in my_orders}
