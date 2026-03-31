@@ -36,6 +36,12 @@ class TestCursorEncoding:
         with pytest.raises(ValueError, match="Invalid cursor"):
             decode_cursor(bad)
 
+    def test_decode_preserves_non_string_values(self) -> None:
+        cursor = encode_cursor({"count": 42, "id": "ABC123"})
+        decoded = decode_cursor(cursor)
+        assert decoded["count"] == 42
+        assert decoded["id"] == "ABC123"
+
 
 class TestCursorParams:
     def test_defaults(self) -> None:

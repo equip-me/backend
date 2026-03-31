@@ -53,6 +53,34 @@ async def test_paginate_empty_queryset() -> None:
     assert has_more is False
 
 
+async def test_paginate_ascending_ordering(create_user: Any) -> None:
+    for i in range(5):
+        await create_user(email=f"asc{i}@example.com", phone=f"+7999300000{i}")
+
+    items1, cursor1, has_more1 = await paginate(
+        User.all(),
+        CursorParams(limit=3),
+        ordering=("created_at", "id"),
+    )
+    assert len(items1) == 3
+    assert has_more1 is True
+    assert cursor1 is not None
+
+    items2, cursor2, has_more2 = await paginate(
+        User.all(),
+        CursorParams(cursor=cursor1, limit=3),
+        ordering=("created_at", "id"),
+    )
+    assert len(items2) == 2
+    assert has_more2 is False
+
+    # Ascending: first page should have earliest created_at
+    assert items1[0].created_at <= items1[-1].created_at
+    # No overlap
+    all_ids = [u.id for u in items1] + [u.id for u in items2]
+    assert len(all_ids) == len(set(all_ids))
+
+
 async def test_paginate_exact_page_size(create_user: Any) -> None:
     for i in range(3):
         await create_user(email=f"exact{i}@example.com", phone=f"+7999200000{i}")
