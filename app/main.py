@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from tortoise.contrib.fastapi import RegisterTortoise
 
 from app.admin.router import router as admin_router
+from app.chat.router import router as chat_router
 from app.core.config import get_settings
 from app.core.database import get_tortoise_config
 from app.core.exceptions import AppError, app_error_handler
@@ -89,6 +90,7 @@ def create_app() -> FastAPI:
     application.include_router(categories_router)
     application.include_router(orders_router)
     application.include_router(media_router)
+    application.include_router(chat_router)
     application.include_router(admin_router)
 
     return application
