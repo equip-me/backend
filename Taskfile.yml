@@ -1,20 +1,22 @@
 version: "3"
 
-vars:
-  IMAGE_NAME: rental-platform
-
 tasks:
   # ── Setup ──────────────────────────────────────────────
   setup:
-    desc: Install deps, start infra
+    desc: Install dependencies
     cmds:
       - poetry install
-      - task: infra:up
-      - task: test:up
 
-  # ── Dev Infrastructure ────────────────────────────────
+  # ── Dev ────────────────────────────────────────────────
+  dev:
+    desc: Start dev server + media worker (Ctrl+C stops both)
+    deps: [infra:up]
+    cmds:
+      - trap 'kill 0' EXIT; poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 & poetry run python -m app.media.worker & wait
+
+  # ── Infrastructure (internal start, public stop) ──────
   infra:up:
-    desc: Start dev infrastructure (DB, OTel Collector, ClickHouse, Grafana)
+    internal: true
     cmds:
       - docker compose -p rental-dev -f docker-compose.dev.yml up -d
 
@@ -23,14 +25,8 @@ tasks:
     cmds:
       - docker compose -p rental-dev -f docker-compose.dev.yml down
 
-  infra:reset:
-    desc: Stop dev infrastructure and remove volumes
-    cmds:
-      - docker compose -p rental-dev -f docker-compose.dev.yml down -v
-
-  # ── Test Infrastructure ───────────────────────────────
-  test:up:
-    desc: Start test infrastructure (DB on port 5433)
+  test:infra:
+    internal: true
     cmds:
       - docker compose -p rental-test -f docker-compose.test.yml up -d
 
@@ -39,33 +35,21 @@ tasks:
     cmds:
       - docker compose -p rental-test -f docker-compose.test.yml down
 
-  test:reset:
-    desc: Stop test infrastructure and remove volumes
-    cmds:
-      - docker compose -p rental-test -f docker-compose.test.yml down -v
-
-  # ── Run ────────────────────────────────────────────────
-  run:
-    desc: Start dev server + media worker (Ctrl+C stops both)
-    deps: [infra:up]
-    cmds:
-      - trap 'kill 0' EXIT; poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 & poetry run python -m app.media.worker & wait
-
   # ── Lint & Format ──────────────────────────────────────
-  lint:
+  ruff:
     desc: Check linting (no auto-fix)
     cmds:
       - poetry run ruff check . {{.CLI_ARGS}}
       - poetry run ruff format --check . {{.CLI_ARGS}}
 
-  lint:fix:
+  ruff:fix:
     desc: Auto-fix lint errors and format
     cmds:
       - poetry run ruff check --fix . {{.CLI_ARGS}}
       - poetry run ruff format . {{.CLI_ARGS}}
 
   # ── Type checking ──────────────────────────────────────
-  typecheck:
+  mypy:
     desc: Run mypy strict
     cmds:
       - poetry run mypy . {{.CLI_ARGS}}
@@ -73,45 +57,23 @@ tasks:
   # ── Testing ────────────────────────────────────────────
   test:
     desc: Run full test suite
-    deps: [test:up]
+    deps: [test:infra]
     cmds:
       - poetry run pytest {{.CLI_ARGS}}
 
-  test:unit:
-    desc: Run unit tests (no infrastructure needed)
-    cmds:
-      - poetry run pytest tests/unit/ {{.CLI_ARGS}}
-
-  test:db:
-    desc: Run DB integration tests
-    deps: [test:up]
-    cmds:
-      - poetry run pytest tests/db/ {{.CLI_ARGS}}
-
-  test:e2e:
-    desc: Run E2E tests (needs all services + DADATA_API_KEY)
-    deps: [test:up]
-    cmds:
-      - poetry run pytest tests/e2e/ {{.CLI_ARGS}}
-
   test:cov:
     desc: Run tests with coverage report
-    deps: [test:up]
+    deps: [test:infra]
     cmds:
-      - poetry run pytest --cov=app --cov-report=html --cov-report=term {{.CLI_ARGS}}
+      - poetry run pytest --cov=app --cov-report=term {{.CLI_ARGS}}
 
   test:lf:
     desc: Re-run last failed tests
-    deps: [test:up]
+    deps: [test:infra]
     cmds:
       - poetry run pytest --lf {{.CLI_ARGS}}
 
   # ── Database migrations ────────────────────────────────
-  db:init:
-    desc: Create migration packages (first-time setup)
-    cmds:
-      - poetry run tortoise init
-
   db:makemigrations:
     desc: Detect model changes and generate migrations
     cmds:
@@ -124,8 +86,8 @@ tasks:
 
   # ── CI (all checks) ───────────────────────────────────
   ci:
-    desc: Run all checks (lint + typecheck + test)
+    desc: Run all checks (ruff + mypy + test)
     cmds:
-      - task: lint
-      - task: typecheck
+      - task: ruff
+      - task: mypy
       - task: test
