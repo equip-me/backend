@@ -78,6 +78,15 @@ API docs: `http://localhost:8000/docs`
 | `task test` | Full test suite (auto-starts test infra) |
 | `task ci` | ruff + mypy + test |
 
+## Releases
+
+Releases are cut via GitHub Actions workflows triggered manually:
+
+- **`release-minor`** — run from `main`. Creates a `release/X.Y` branch, bumps the version, builds a Docker image, pushes to `ghcr.io`, and opens a PR to sync the version back to `main`.
+- **`release-patch`** — run from a `release/X.Y` branch. Bumps the patch version, builds and pushes the image, pins it in `docker-compose.prod.yml`.
+
+Images are published to `ghcr.io/khamitovdr/rental-platform` and tagged with the version number. The latest minor release also gets the `latest` tag.
+
 ## Links
 
 - [Business Logic Spec](docs/business-logic.md) — full domain model, order state machine, permissions, and validation rules
