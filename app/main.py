@@ -8,6 +8,7 @@ from fastapi.responses import JSONResponse
 from tortoise.contrib.fastapi import RegisterTortoise
 
 from app.admin.router import router as admin_router
+from app.chat.pubsub import close_redis, init_redis
 from app.chat.router import router as chat_router
 from app.core.config import get_settings
 from app.core.database import get_tortoise_config
@@ -54,7 +55,9 @@ async def lifespan(application: FastAPI) -> AsyncGenerator[None]:
             bucket=settings.storage.bucket,
         )
         await storage.ensure_bucket()
+        await init_redis(settings.worker.redis_url)
         yield
+        await close_redis()
     shutdown_observability()
 
 
