@@ -1,3 +1,23 @@
+# README Redesign Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** Replace the stale README with a feature-forward version and extract contributing guidelines into a dedicated file.
+
+**Architecture:** Two static documentation files. README leads with features and architecture, ends with quick start. CONTRIBUTING.md holds the workflow, PR format, CI, and coding conventions extracted from the current README.
+
+**Tech Stack:** Markdown
+
+---
+
+### Task 1: Write the new README.md
+
+**Files:**
+- Modify: `README.md`
+
+- [ ] **Step 1: Replace README.md with the new content**
+
+```markdown
 # Rental Platform Backend
 
 [![tests](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/coverage.yml/badge.svg)](https://github.com/khamitovdr/equipment-sharing-backend-v2/actions/workflows/coverage.yml)
@@ -78,16 +98,93 @@ API docs: `http://localhost:8000/docs`
 | `task test` | Full test suite (auto-starts test infra) |
 | `task ci` | ruff + mypy + test |
 
-## Releases
-
-Releases are cut via GitHub Actions workflows triggered manually:
-
-- **`release-minor`** — run from `main`. Creates a `release/X.Y` branch, bumps the version, builds a Docker image, pushes to `ghcr.io`, and opens a PR to sync the version back to `main`.
-- **`release-patch`** — run from a `release/X.Y` branch. Bumps the patch version, builds and pushes the image, pins it in `docker-compose.prod.yml`.
-
-Images are published to `ghcr.io/khamitovdr/rental-platform` and tagged with the version number. The latest minor release also gets the `latest` tag.
-
 ## Links
 
 - [Business Logic Spec](docs/business-logic.md) — full domain model, order state machine, permissions, and validation rules
 - [Contributing](CONTRIBUTING.md) — branch workflow, PR format, coding conventions
+```
+
+- [ ] **Step 2: Review the rendered output**
+
+Open `README.md` in a Markdown previewer or on GitHub to verify badges render, tables align, and links work.
+
+- [ ] **Step 3: Commit**
+
+```bash
+git add README.md
+git commit -m "docs: rewrite README with feature-forward structure"
+```
+
+---
+
+### Task 2: Create CONTRIBUTING.md
+
+**Files:**
+- Create: `CONTRIBUTING.md`
+
+- [ ] **Step 1: Write CONTRIBUTING.md**
+
+```markdown
+# Contributing
+
+All changes go through pull requests — `main` is protected and requires squash merge. The PR title becomes the commit message on `main`, so it must be clear and well-structured.
+
+## Workflow
+
+1. Create a branch: `type/short-description` (e.g. `feat/jwt-refresh-tokens`, `fix/order-status-race`)
+2. Run `task ruff:fix` and `task mypy` before pushing
+3. Open a PR with a [Conventional Commits](https://www.conventionalcommits.org/) title
+
+## PR Title Format
+
+Format: `type(scope): description` or `type: description` — max 72 characters.
+
+Allowed types: `feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `ci`, `perf`
+
+Examples:
+- `feat(auth): add JWT refresh token rotation`
+- `fix: prevent duplicate order creation on retry`
+- `refactor(listings): extract price calculation service`
+
+## PR Description
+
+```
+## Summary
+<1-3 bullet points: what changed and why>
+
+## Test plan
+<How to verify: new/updated tests, manual steps, or N/A>
+```
+
+## CI
+
+GitHub Actions runs on every PR to `main`:
+
+- **lint** — `ruff check` + `ruff format --check`
+- **typecheck** — mypy strict
+- **test** — pytest with Postgres
+- **pr-title** — Conventional Commits validation
+
+All checks must pass before merge.
+
+Run everything locally first:
+
+```bash
+task ci   # ruff + mypy + test
+```
+
+## Conventions
+
+- **Type annotations** on every function — strict mypy, no `# type: ignore`
+- **No `from __future__ import annotations`** — Pydantic v2 and Tortoise need runtime types
+- **Ruff** handles linting and formatting (replaces black + isort + flake8)
+- **Poetry** for dependency management — commit `poetry.lock`
+- **All tool config** lives in `pyproject.toml`
+```
+
+- [ ] **Step 2: Commit**
+
+```bash
+git add CONTRIBUTING.md
+git commit -m "docs: extract contributing guidelines to CONTRIBUTING.md"
+```

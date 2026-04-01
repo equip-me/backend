@@ -25,14 +25,14 @@ docs/                # Specs: technical-spec.md, business-logic.md
 
 | Command | Purpose |
 |---------|---------|
-| `task setup` | Install deps, start DB |
-| `task run` | Dev server (uvicorn --reload :8000) |
-| `task lint:fix` | Auto-fix lint + format |
-| `task typecheck` | mypy strict |
-| `task test` | Full test suite |
+| `task setup` | Install dependencies |
+| `task dev` | Dev server + media worker (auto-starts infra) |
+| `task ruff:fix` | Auto-fix lint + format |
+| `task mypy` | Strict type checking |
+| `task test` | Full test suite (auto-starts test infra) |
 | `task db:makemigrations` | Generate migration |
 | `task db:migrate` | Apply migrations |
-| `task ci` | lint + typecheck + test |
+| `task ci` | ruff + mypy + test |
 
 ## Configuration
 
