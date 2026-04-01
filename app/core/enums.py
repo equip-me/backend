@@ -65,12 +65,14 @@ class MediaOwnerType(StrEnum):
     USER = "user"
     ORGANIZATION = "organization"
     LISTING = "listing"
+    MESSAGE = "message"
 
 
 class MediaContext(StrEnum):
     USER_PROFILE = "user_profile"
     ORG_PROFILE = "org_profile"
     LISTING = "listing"
+    CHAT = "chat"
 
 
 class MediaStatus(StrEnum):
