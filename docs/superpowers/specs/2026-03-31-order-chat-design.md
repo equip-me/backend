@@ -16,11 +16,14 @@ Each order implicitly has a chat. No separate chat entity — the order is the c
 | order | FK -> Order | Required, `related_name="messages"` |
 | sender | FK -> User | Actual user who sent the message |
 | text | TextField | Nullable (attachment-only messages allowed) |
+| media | JSONField | List of media snapshots, default `[]` |
 | created_at | DatetimeField | `auto_now_add=True` |
 | read_at | DatetimeField | Nullable, set when the other side reads the message |
 
+The `media` field stores denormalized snapshots of attached media at send time: `[{"id": "uuid", "kind": "photo", "variants": {...}, "original_filename": "...", "content_type": "..."}]`. Since messages are immutable, this avoids per-message Media queries when loading chat history.
+
 Constraints (validated at service layer, not DB):
-- At least one of `text` or attachments must be present
+- At least one of `text` or `media` must be present
 - Max text length: 4000 characters
 - Max attachments per message: 10
 
@@ -30,7 +33,10 @@ Reuses the existing media system with new enum values:
 - `MediaOwnerType.MESSAGE` — `owner_id` points to `ChatMessage.id` (UUID as string)
 - `MediaContext.CHAT`
 
-Media is uploaded via the existing presigned URL flow, then linked to a message by passing `media_ids` in the WebSocket message frame.
+Media is uploaded via the existing presigned URL flow. When a message is sent with `media_ids`:
+1. Server validates Media records (exist, belong to sender, status=ready)
+2. Snapshots relevant data into the `media` JSON field on ChatMessage
+3. Media records remain in the media table for S3 lifecycle management
 
 ### Chat-specific media variants
 
