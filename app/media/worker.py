@@ -20,6 +20,7 @@ _CONTEXT_TO_VARIANT_SET: dict[str, str] = {
     "user_profile": "profile",
     "org_profile": "profile",
     "listing": "listing",
+    "chat": "chat",
 }
 
 
@@ -144,8 +145,16 @@ async def cleanup_orphans_cron(_ctx: dict[Any, Any]) -> None:
     logger.info("Orphan cleanup: deleted %d media records", deleted)
 
 
+async def notify_new_chat_message(_ctx: dict[Any, Any], order_id: str, message_id: str) -> None:
+    """Stub for chat message notifications. Hook point for future push notifications."""
+    logger.info("Chat notification: order=%s message=%s (stub — no notification sent)", order_id, message_id)
+
+
 class WorkerSettings:
-    functions: ClassVar[list[Any]] = [func(cast("WorkerCoroutine", process_media_job), max_tries=3)]
+    functions: ClassVar[list[Any]] = [
+        func(cast("WorkerCoroutine", process_media_job), max_tries=3),
+        func(cast("WorkerCoroutine", notify_new_chat_message), max_tries=1),
+    ]
     cron_jobs: ClassVar[list[Any]] = [
         cron(cast("WorkerCoroutine", cleanup_orphans_cron), minute={0}),
     ]

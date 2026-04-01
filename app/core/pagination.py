@@ -2,6 +2,7 @@ import json
 from base64 import b64decode, b64encode
 from datetime import datetime
 from typing import Any
+from uuid import UUID
 
 from pydantic import BaseModel, Field
 from tortoise.expressions import Q
@@ -25,6 +26,8 @@ def encode_cursor(values: dict[str, Any]) -> str:
     for key, val in values.items():
         if isinstance(val, datetime):
             serialized[key] = val.isoformat()
+        elif isinstance(val, UUID):
+            serialized[key] = str(val)
         else:
             serialized[key] = val
     return b64encode(json.dumps(serialized).encode()).decode()

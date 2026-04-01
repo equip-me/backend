@@ -16,6 +16,8 @@ Built with FastAPI, Tortoise ORM, and PostgreSQL.
 
 - **Listing catalog** — categorized equipment listings with draft/published lifecycle, public browsing, and org-scoped management
 
+- **Order chat** — real-time WebSocket messaging between renter and organization within an order, with media attachments, read receipts, and typing indicators
+
 - **Media processing pipeline** — S3-compatible uploads (MinIO) with background processing via Redis-backed worker
 
 - **Observability** — OpenTelemetry instrumentation with traces and metrics flowing to ClickHouse, visualized through pre-configured Grafana dashboards
@@ -32,6 +34,7 @@ Built with FastAPI, Tortoise ORM, and PostgreSQL.
 | `organizations` | Org CRUD, membership, Dadata integration |
 | `listings` | Catalog browsing, categories, listing lifecycle |
 | `orders` | Order state machine, rental lifecycle |
+| `chat` | Real-time order messaging via WebSocket, Redis pub/sub |
 | `media` | S3 uploads, background image/video processing |
 | `admin` | Platform admin endpoints (verify orgs, manage roles) |
 | `observability` | OpenTelemetry setup, trace/metrics export |
@@ -45,7 +48,7 @@ Dev environment runs via Docker Compose:
 |---------|---------|
 | PostgreSQL 17 | Primary database |
 | MinIO | S3-compatible object storage for media |
-| Redis | Task queue for media processing worker |
+| Redis | Task queue (media worker) and chat pub/sub |
 | ClickHouse | Telemetry storage (traces, metrics) |
 | OTel Collector | Receives and exports telemetry data |
 | Grafana | Observability dashboards (localhost:3001) |

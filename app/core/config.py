@@ -75,6 +75,13 @@ class WorkerSettings(BaseModel):
     max_concurrent_jobs: int = 10
 
 
+class ChatSettings(BaseModel):
+    cooldown_days: int = 7
+    max_message_length: int = 4000
+    max_attachments_per_message: int = 10
+    rate_limit_per_minute: int = 30
+
+
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_nested_delimiter="__", env_file=".env", env_file_encoding="utf-8")
 
@@ -88,6 +95,7 @@ class Settings(BaseSettings):
     storage: StorageSettings = StorageSettings()
     media: MediaSettings = MediaSettings()
     worker: WorkerSettings = WorkerSettings()
+    chat: ChatSettings = ChatSettings()
 
     @classmethod
     def settings_customise_sources(

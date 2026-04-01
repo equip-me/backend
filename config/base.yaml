@@ -64,10 +64,15 @@ media:
       - { name: "large", max_width: 1200, quality: 85 }
       - { name: "medium", max_width: 600, quality: 80 }
       - { name: "small", max_width: 200, quality: 75 }
+    chat:
+      - { name: "thumbnail", max_width: 100, quality: 75 }
+      - { name: "large", max_width: 1200, quality: 85 }
   video_variant_sets:
     listing:
       - { name: "full", max_height: 720, video_bitrate: "1.5M", audio: true }
       - { name: "preview", max_height: 480, video_bitrate: "500k", audio: false, max_duration_seconds: 10 }
+    chat:
+      - { name: "original", max_height: 4320, video_bitrate: "2M", audio: true }
   listing_limits_max_photos: 20
   listing_limits_max_videos: 5
   listing_limits_max_documents: 10
@@ -75,3 +80,9 @@ media:
 worker:
   redis_url: "redis://localhost:6379"
   max_concurrent_jobs: 10
+
+chat:
+  cooldown_days: 7
+  max_message_length: 4000
+  max_attachments_per_message: 10
+  rate_limit_per_minute: 30

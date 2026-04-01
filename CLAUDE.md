@@ -56,7 +56,7 @@ The PR title becomes the commit message on `main`, so it must be clear and well-
 ### Workflow
 
 1. Create a feature branch: `type/short-description` (e.g. `feat/jwt-refresh-tokens`, `fix/order-status-race`)
-2. Run `task lint:fix` and `task typecheck` locally before pushing
+2. Run `task ruff:fix` and `task mypy` locally before pushing
 3. Open a PR via `gh pr create` with a Conventional Commits title and a detailed body
 
 ### PR Title (Conventional Commits)

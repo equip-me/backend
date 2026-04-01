@@ -1,4 +1,5 @@
 from collections.abc import AsyncGenerator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import httpx
@@ -6,6 +7,7 @@ import pytest
 from httpx import ASGITransport, AsyncClient
 from tortoise import Tortoise, connections
 
+from app.chat.pubsub import close_redis, init_redis
 from app.core.config import get_settings
 from app.core.database import get_tortoise_config
 from app.core.enums import OrganizationStatus, UserRole
@@ -16,6 +18,7 @@ from app.organizations.models import Organization
 from app.users.models import User
 
 _TEST_TABLES = (
+    "chat_messages",
     "media",
     "orders",
     "listings",
@@ -45,8 +48,10 @@ async def initialize_db() -> AsyncGenerator[None]:
         bucket=settings.storage.bucket,
     )
     await storage.ensure_bucket()
+    await init_redis(settings.worker.redis_url)
 
     yield
+    await close_redis()
     await Tortoise.close_connections()
 
 
@@ -220,3 +225,43 @@ async def renter_token(create_user: Any) -> str:
         surname="Testov",
     )
     return str(token)
+
+
+@pytest.fixture
+async def create_order_for_chat(
+    client: AsyncClient,
+    create_listing: tuple[str, str, str],
+    renter_token: str,
+) -> tuple[str, str, str, str]:
+    """Create an order in OFFERED status for chat testing.
+
+    Returns (order_id, org_id, org_admin_token, renter_token).
+    """
+    listing_id, org_id, org_token = create_listing
+    tomorrow = (datetime.now(tz=UTC) + timedelta(days=1)).date().isoformat()
+    next_week = (datetime.now(tz=UTC) + timedelta(days=7)).date().isoformat()
+
+    resp = await client.post(
+        "/api/v1/orders/",
+        json={
+            "listing_id": listing_id,
+            "requested_start_date": tomorrow,
+            "requested_end_date": next_week,
+        },
+        headers={"Authorization": f"Bearer {renter_token}"},
+    )
+    assert resp.status_code == 201, resp.text
+    order_id: str = resp.json()["id"]
+
+    resp = await client.patch(
+        f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
+        json={
+            "offered_cost": "5000.00",
+            "offered_start_date": tomorrow,
+            "offered_end_date": next_week,
+        },
+        headers={"Authorization": f"Bearer {org_token}"},
+    )
+    assert resp.status_code == 200, resp.text
+
+    return order_id, org_id, org_token, renter_token

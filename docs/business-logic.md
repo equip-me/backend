@@ -11,8 +11,9 @@ This document describes the complete business logic of the rental platform. It i
 3. [Organizations](#3-organizations)
 4. [Listing Catalog](#4-listing-catalog)
 5. [Order Lifecycle](#5-order-lifecycle)
-6. [Media & File Uploads](#6-media--file-uploads)
-7. [Data Model Reference](#7-data-model-reference)
+6. [Chat](#6-chat)
+7. [Media & File Uploads](#7-media--file-uploads)
+8. [Data Model Reference](#8-data-model-reference)
 
 ---
 
@@ -508,7 +509,7 @@ PENDING
 
 ### 5.4 Per-Order Chat
 
-Each order should have a dedicated chat room between the renter and the organization, allowing them to communicate throughout the order lifecycle. The chat implementation is out of scope for this document and will be designed separately.
+Each order implicitly has a dedicated chat room. See [Section 6](#6-chat) for the full specification.
 
 ### 5.5 Order Access Rules
 
@@ -543,9 +544,86 @@ Each order should have a dedicated chat room between the renter and the organiza
 
 ---
 
-## 6. Media & File Uploads
+## 6. Chat
 
-### 6.1 Media Entity
+### 6.1 Overview
+
+Chat is created implicitly with each order. There is no separate chat entity — the order itself is the chat room. Each order has exactly one chat thread, accessible to both sides throughout the order lifecycle.
+
+### 6.2 Participants
+
+| Side | Eligible users |
+|------|---------------|
+| **Requester** | The user who placed the order |
+| **Organization** | Members with role `admin` or `editor` AND status `member` |
+
+Org `viewer` members and non-members cannot access chat.
+
+### 6.3 Message Authorship Display
+
+- Requester's messages display their full name (`name + surname`).
+- Organization members' messages display the organization's `short_name`.
+- Individual org member identity is not exposed to the requester — the actual sender is stored in the DB but not included in API responses visible to the other side.
+
+### 6.4 Chat Lifecycle
+
+The chat switches between **active** (read-write) and **read-only** modes based on the order status and a cooldown period.
+
+**Terminal order statuses:** `finished`, `rejected`, `declined`, `canceled_by_user`, `canceled_by_organization`
+
+**Cooldown:** configurable (default **7 days**), measured from the timestamp of the last message, or `order.updated_at` if no messages exist.
+
+| Condition | Chat mode |
+|-----------|-----------|
+| Order in non-terminal status (`pending`, `offered`, `confirmed`, `active`) | Active (read-write) |
+| Order in terminal status AND within cooldown period | Active (read-write) |
+| Order in terminal status AND cooldown period expired | Read-only |
+
+### 6.5 Messages
+
+- **Immutable** — no editing, no deletion.
+- A message must contain text, attachments, or both.
+- **Max text length:** 4 000 characters.
+- **Max attachments per message:** 10.
+- **Rate limit:** 30 messages per minute per connection.
+
+### 6.6 Media Attachments
+
+Chat attachments reuse the existing media system (see [Section 7](#7-media--file-uploads)) with chat-specific context values.
+
+| Kind | Processing |
+|------|-----------|
+| **Photo** | Thumbnail (100×100) + large (1200×900), WebP |
+| **Video** | Original size, transcoded to WebM |
+| **Document** | Stored as-is, no processing |
+
+### 6.7 Real-Time Delivery
+
+Messages are delivered over **WebSocket**, one connection per order. Cross-worker fan-out is handled via **Redis pub/sub** so that any backend worker can broadcast to all connected clients for a given order.
+
+### 6.8 Read Receipts
+
+Read state is persisted: each message stores a `read_at` timestamp. The API exposes when "the other side" has read the message; each participant can see the read status of messages they sent.
+
+### 6.9 Typing Indicators
+
+Typing indicators are **ephemeral** — broadcast over WebSocket only, never persisted to the database.
+
+### 6.10 Chat API Summary
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/v1/orders/{id}/chat/messages` | Requester or Org Editor | List messages (paginated) |
+| POST | `/api/v1/orders/{id}/chat/messages` | Requester or Org Editor | Send a message |
+| WS | `/api/v1/orders/{id}/chat/ws` | Requester or Org Editor | Real-time message stream, typing indicators |
+| POST | `/api/v1/organizations/{org_id}/orders/{id}/chat/messages` | Org Editor | Send a message (org-side path) |
+| GET | `/api/v1/organizations/{org_id}/orders/{id}/chat/messages` | Org Editor | List messages (org-side path) |
+
+---
+
+## 7. Media & File Uploads
+
+### 7.1 Media Entity
 
 Each uploaded file is tracked as a `Media` record.
 
@@ -594,7 +672,7 @@ pending_upload
                                                                └──[POST /media/{id}/retry]──► processing
 ```
 
-### 6.2 Upload Flow
+### 7.2 Upload Flow
 
 1. Client calls `POST /media/upload-url` with `kind`, `context`, and `owner_id`. Server creates a `Media` record (`status: pending_upload`) and returns a presigned S3 PUT URL.
 2. Client uploads the file directly to S3 using the presigned URL (no server proxy).
@@ -602,7 +680,7 @@ pending_upload
 4. ARQ worker processes the file (transcode/resize), stores output variants in S3, and transitions status to `ready` or `failed`.
 5. Client polls `GET /media/{id}/status` until `ready` or `failed`.
 
-### 6.3 Processing Rules
+### 7.3 Processing Rules
 
 #### Photos
 Output format: **WebP**.
@@ -624,7 +702,7 @@ Output format: **WebM** (VP9 video + Opus audio).
 #### Documents
 Stored as-is. No server-side processing; the original S3 object is the deliverable.
 
-### 6.4 Entity Media Associations
+### 7.4 Entity Media Associations
 
 | Entity | Allowed kinds | Cardinality |
 |--------|--------------|-------------|
@@ -634,7 +712,7 @@ Stored as-is. No server-side processing; the original S3 object is the deliverab
 
 Setting a new profile photo for a User or Organization replaces the existing one; the old `Media` record and its S3 objects are deleted.
 
-### 6.5 Cleanup
+### 7.5 Cleanup
 
 | Trigger | Scope | Behavior |
 |---------|-------|---------|
@@ -642,7 +720,7 @@ Setting a new profile photo for a User or Organization replaces the existing one
 | Orphan sweep (hourly cron) | `status: pending_upload`, `owner_id` not attached to any entity, `created_at` older than TTL (default 24 h) | Deleted by background job |
 | Failed media | `status: failed` | **Not** auto-deleted; retained for manual inspection |
 
-### 6.6 Permissions
+### 7.6 Permissions
 
 | Action | Required permission |
 |--------|-------------------|
@@ -655,7 +733,7 @@ Setting a new profile photo for a User or Organization replaces the existing one
 | Attach to Organization profile | Uploader + Org Admin of that organization |
 | Attach to Listing | Uploader + Org Editor of the listing's organization |
 
-### 6.7 Media API Summary
+### 7.7 Media API Summary
 
 | Method | Path | Auth | Purpose |
 |--------|------|------|---------|
@@ -668,9 +746,9 @@ Setting a new profile photo for a User or Organization replaces the existing one
 
 ---
 
-## 7. Data Model Reference
+## 8. Data Model Reference
 
-### 7.1 Entity Relationships
+### 8.1 Entity Relationships
 
 ```
 Organization (PK: id)
@@ -717,7 +795,7 @@ Media (PK: id)
   Polymorphic: (owner_type, owner_id) → User | Organization | Listing
 ```
 
-### 7.2 All Enums
+### 8.2 All Enums
 
 #### UserRole
 | Value | Description |

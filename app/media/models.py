@@ -11,7 +11,7 @@ class Media(Model):
     id = fields.UUIDField(primary_key=True, default=uuid4)
     uploaded_by: Any = fields.ForeignKeyField("models.User", related_name="uploaded_media")
     owner_type = fields.CharEnumField(MediaOwnerType, max_length=20, null=True)
-    owner_id = fields.CharField(max_length=6, null=True)
+    owner_id = fields.CharField(max_length=36, null=True)
     kind = fields.CharEnumField(MediaKind, max_length=20)
     context = fields.CharEnumField(MediaContext, max_length=20)
     status = fields.CharEnumField(MediaStatus, max_length=20, default=MediaStatus.PENDING_UPLOAD)
