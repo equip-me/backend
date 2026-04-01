@@ -2,7 +2,7 @@ import asyncio
 import json
 import logging
 import time
-from collections.abc import Coroutine
+from collections.abc import Callable, Coroutine
 from typing import Any, cast
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -254,4 +254,5 @@ async def chat_websocket(websocket: WebSocket, order_id: str, token: str | None 
     finally:
         _remove_connection(order_id, user.id, websocket)
         await pubsub.unsubscribe(f"chat:{order_id}")
-        await cast("Coroutine[None, None, None]", getattr(pubsub, "aclose")())
+        aclose = cast("Callable[[], Coroutine[None, None, None]]", pubsub.aclose)
+        await aclose()
