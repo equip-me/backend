@@ -162,9 +162,7 @@ class TestChatWebSocket:
         async def renter_session() -> None:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
-                async with aconnect_ws(
-                    f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc
-                ) as ws:
+                async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
                     await ws.receive_json()  # connected
                     await ws.send_json({"type": "message", "text": "Hello org!"})
                     msg = await ws.receive_json()
@@ -174,9 +172,7 @@ class TestChatWebSocket:
         async def org_session() -> None:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
-                async with aconnect_ws(
-                    f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc
-                ) as ws:
+                async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc) as ws:
                     await ws.receive_json()  # connected
                     await sent.wait()
                     msg = await ws.receive_json()
@@ -208,9 +204,7 @@ class TestChatWebSocket:
         async def renter_session() -> None:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
-                async with aconnect_ws(
-                    f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc
-                ) as ws:
+                async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
                     await ws.receive_json()  # connected
                     await ws.send_json({"type": "message", "text": "Read this"})
                     msg = await ws.receive_json()  # own echo
@@ -223,9 +217,7 @@ class TestChatWebSocket:
         async def org_session() -> None:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
-                async with aconnect_ws(
-                    f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc
-                ) as ws:
+                async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc) as ws:
                     await ws.receive_json()  # connected
                     await sent_event.wait()
                     await ws.receive_json()  # drain the broadcast message
