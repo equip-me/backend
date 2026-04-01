@@ -1,0 +1,21 @@
+from typing import Any, ClassVar
+from uuid import uuid4
+
+from tortoise import fields
+from tortoise.models import Model
+
+
+class ChatMessage(Model):
+    id = fields.UUIDField(primary_key=True, default=uuid4)
+    order: Any = fields.ForeignKeyField("models.Order", related_name="messages")
+    order_id: str
+    sender: Any = fields.ForeignKeyField("models.User", related_name="sent_messages")
+    sender_id: str
+    text = fields.TextField(null=True)
+    media: Any = fields.JSONField(default=list)
+    created_at = fields.DatetimeField(auto_now_add=True)
+    read_at = fields.DatetimeField(null=True)
+
+    class Meta:
+        table = "chat_messages"
+        ordering: ClassVar[list[str]] = ["-created_at"]
