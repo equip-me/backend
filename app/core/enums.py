@@ -28,31 +28,30 @@ class MembershipStatus(StrEnum):
 class ListingStatus(StrEnum):
     HIDDEN = "hidden"
     PUBLISHED = "published"
-    IN_RENT = "in_rent"
     ARCHIVED = "archived"
 
 
 class OrderStatus(StrEnum):
     PENDING = "pending"
     OFFERED = "offered"
-    REJECTED = "rejected"
+    ACCEPTED = "accepted"
     CONFIRMED = "confirmed"
-    DECLINED = "declined"
     ACTIVE = "active"
     FINISHED = "finished"
     CANCELED_BY_USER = "canceled_by_user"
     CANCELED_BY_ORGANIZATION = "canceled_by_organization"
+    EXPIRED = "expired"
 
 
 class OrderAction(StrEnum):
     OFFER_BY_ORG = "offer_by_org"
-    REJECT_BY_ORG = "reject_by_org"
-    CONFIRM_BY_USER = "confirm_by_user"
-    DECLINE_BY_USER = "decline_by_user"
+    ACCEPT_BY_USER = "accept_by_user"
+    APPROVE_BY_ORG = "approve_by_org"
     CANCEL_BY_USER = "cancel_by_user"
     CANCEL_BY_ORG = "cancel_by_org"
     ACTIVATE = "activate"
     FINISH = "finish"
+    EXPIRE = "expire"
 
 
 class MediaKind(StrEnum):
