@@ -20,6 +20,7 @@ from app.users.models import User
 _TEST_TABLES = (
     "chat_messages",
     "media",
+    "reservations",
     "orders",
     "listings",
     "listing_categories",

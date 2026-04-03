@@ -7,6 +7,7 @@ MODELS = [
     "app.orders.models",
     "app.media.models",
     "app.chat.models",
+    "app.reservations.models",
 ]
 
 
