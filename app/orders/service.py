@@ -11,7 +11,7 @@ from app.observability.metrics import order_transitions, orders_created
 from app.observability.tracing import traced
 from app.orders.models import Order
 from app.orders.schemas import OrderCreate, OrderOffer, OrderRead
-from app.orders.state_machine import maybe_auto_transition, transition
+from app.orders.state_machine import transition
 from app.users.models import User
 
 
@@ -21,31 +21,7 @@ def _record_transition(order_id: str, old_status: OrderStatus, new_status: Order
 
 
 async def _apply_auto_transition(order: Order) -> Order:
-    # TODO: Replace with Temporal workflow for automatic order status transitions
-    new_status = maybe_auto_transition(
-        status=order.status,
-        offered_start_date=order.offered_start_date,
-        offered_end_date=order.offered_end_date,
-        today=datetime.now(UTC).date(),
-    )
-    if new_status is None:
-        return order
-
-    order.status = new_status
-    await order.save()
-
-    # Note: fetch_related may issue a redundant query if listing was already prefetch_related
-    # in the list endpoints. Acceptable until Temporal replaces lazy evaluation.
-    await order.fetch_related("listing")
-    listing: Listing = order.listing
-
-    if new_status == OrderStatus.ACTIVE:
-        listing.status = ListingStatus.IN_RENT
-        await listing.save()
-    elif new_status == OrderStatus.FINISHED:
-        listing.status = ListingStatus.PUBLISHED
-        await listing.save()
-
+    # Auto-transitions (CONFIRMED→ACTIVE, ACTIVE→FINISHED) are handled by background jobs (Task 6).
     return order
 
 
