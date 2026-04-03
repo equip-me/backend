@@ -45,28 +45,17 @@ async def get_my_order(
     return await service.get_order(order)
 
 
-@router.patch("/orders/{order_id}/confirm", response_model=OrderRead)
-async def confirm_order(
+@router.patch("/orders/{order_id}/accept", response_model=OrderRead)
+async def accept_order(
     order: Annotated[Order, Depends(require_order_requester)],
 ) -> OrderRead:
-    return await service.confirm_order(order)
-
-
-@router.patch("/orders/{order_id}/decline", response_model=OrderRead)
-async def decline_order(
-    order: Annotated[Order, Depends(require_order_requester)],
-) -> OrderRead:
-    return await service.decline_order(order)
+    return await service.accept_order(order)
 
 
 @router.patch("/orders/{order_id}/cancel", response_model=OrderRead)
 async def cancel_order_by_user(
     order: Annotated[Order, Depends(require_order_requester)],
 ) -> OrderRead:
-    """Cancel a confirmed or active order.
-
-    Returns listing to published status if it was in_rent.
-    """
     return await service.cancel_order_by_user(order)
 
 
@@ -99,19 +88,15 @@ async def offer_order(
     data: OrderOffer,
     _membership: Annotated[Membership, Depends(require_org_editor)],
 ) -> OrderRead:
-    """Offer or re-offer rental terms to the renter.
-
-    Allowed from pending or offered status. Org Editor only.
-    """
     return await service.offer_order(order, data)
 
 
-@router.patch("/organizations/{org_id}/orders/{order_id}/reject", response_model=OrderRead)
-async def reject_order(
+@router.patch("/organizations/{org_id}/orders/{order_id}/approve", response_model=OrderRead)
+async def approve_order(
     order: Annotated[Order, Depends(get_org_order_or_404)],
     _membership: Annotated[Membership, Depends(require_org_editor)],
 ) -> OrderRead:
-    return await service.reject_order(order)
+    return await service.approve_order(order)
 
 
 @router.patch("/organizations/{org_id}/orders/{order_id}/cancel", response_model=OrderRead)
@@ -119,8 +104,4 @@ async def cancel_order_by_org(
     order: Annotated[Order, Depends(get_org_order_or_404)],
     _membership: Annotated[Membership, Depends(require_org_editor)],
 ) -> OrderRead:
-    """Cancel a confirmed or active order.
-
-    Returns listing to published status if it was in_rent. Org Editor only.
-    """
     return await service.cancel_order_by_org(order)
