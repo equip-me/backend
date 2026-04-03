@@ -850,9 +850,9 @@ class TestListingSideEffects:
         )
         assert resp.json()["status"] == "active"
 
-        # Check listing is in_rent
+        # Listing stays published (no in_rent status)
         resp = await client.get(f"/api/v1/listings/{listing_id}")
-        assert resp.json()["status"] == "in_rent"
+        assert resp.json()["status"] == "published"
 
         # Cancel the order
         resp = await client.patch(

@@ -185,9 +185,9 @@ class TestOrderHappyPaths:
         assert get_resp.status_code == 200
         assert get_resp.json()["status"] == OrderStatus.ACTIVE
 
-        # Verify listing is in_rent
+        # Verify listing is still published (no in_rent status)
         listing_obj = await Listing.get(id=listing_id)
-        assert listing_obj.status == ListingStatus.IN_RENT
+        assert listing_obj.status == ListingStatus.PUBLISHED
 
         # Mock date past end -> auto-transition to finished
         end_date = datetime.date.fromisoformat(end_str)

@@ -268,9 +268,9 @@ class TestCancelRejectDeclineHappyPaths:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
         await _advance_to_active(client, org_id, org_token, renter_token, order_id, start_str, end_str, mock_today)
 
-        # Verify listing is in_rent before cancellation
+        # Verify listing is published before cancellation
         listing_obj = await Listing.get(id=listing_id)
-        assert listing_obj.status == ListingStatus.IN_RENT
+        assert listing_obj.status == ListingStatus.PUBLISHED
 
         resp = await client.patch(f"/api/v1/orders/{order_id}/cancel", headers=_auth(renter_token))
         assert resp.status_code == 200
@@ -299,9 +299,9 @@ class TestCancelRejectDeclineHappyPaths:
         order_id, start_str, end_str = await _create_order(client, listing_id, renter_token)
         await _advance_to_active(client, org_id, org_token, renter_token, order_id, start_str, end_str, mock_today)
 
-        # Verify listing is in_rent before cancellation
+        # Verify listing is published before cancellation
         listing_obj = await Listing.get(id=listing_id)
-        assert listing_obj.status == ListingStatus.IN_RENT
+        assert listing_obj.status == ListingStatus.PUBLISHED
 
         resp = await client.patch(
             f"/api/v1/organizations/{org_id}/orders/{order_id}/cancel",
