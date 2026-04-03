@@ -173,7 +173,7 @@ async def _listen_client(
 
             # Enqueue notification job for offline users
             try:
-                from app.media.worker import get_arq_pool
+                from app.worker.settings import get_arq_pool
 
                 pool = await get_arq_pool()
                 await pool.enqueue_job("notify_new_chat_message", order.id, str(message_read.id))

@@ -1,12 +1,7 @@
 import logging
 from datetime import UTC, datetime
-from typing import Any, ClassVar, cast
+from typing import Any
 from uuid import UUID
-
-from arq import create_pool, func
-from arq.connections import ArqRedis, RedisSettings
-from arq.cron import cron
-from arq.typing import WorkerCoroutine
 
 from app.core.config import get_settings
 from app.core.enums import MediaKind, MediaStatus
@@ -124,12 +119,6 @@ async def _process_document(media: Media, storage: StorageClient) -> None:
     await storage.delete(media.upload_key)
 
 
-async def get_arq_pool() -> ArqRedis:
-    settings = get_settings()
-    redis_settings = RedisSettings.from_dsn(settings.worker.redis_url)
-    return await create_pool(redis_settings)
-
-
 async def cleanup_orphans_cron(_ctx: dict[Any, Any]) -> None:
     from tortoise import Tortoise
 
@@ -143,31 +132,3 @@ async def cleanup_orphans_cron(_ctx: dict[Any, Any]) -> None:
     storage = _get_storage()
     deleted = await cleanup_orphaned_media(storage, settings.media.orphan_cleanup_after_hours)
     logger.info("Orphan cleanup: deleted %d media records", deleted)
-
-
-async def notify_new_chat_message(_ctx: dict[Any, Any], order_id: str, message_id: str) -> None:
-    """Stub for chat message notifications. Hook point for future push notifications."""
-    logger.info("Chat notification: order=%s message=%s (stub — no notification sent)", order_id, message_id)
-
-
-class WorkerSettings:
-    functions: ClassVar[list[Any]] = [
-        func(cast("WorkerCoroutine", process_media_job), max_tries=3),
-        func(cast("WorkerCoroutine", notify_new_chat_message), max_tries=1),
-    ]
-    cron_jobs: ClassVar[list[Any]] = [
-        cron(cast("WorkerCoroutine", cleanup_orphans_cron), minute={0}),
-    ]
-    max_jobs = 10
-    redis_settings: ClassVar[RedisSettings] = RedisSettings.from_dsn(get_settings().worker.redis_url)
-
-
-if __name__ == "__main__":
-    import asyncio
-
-    from arq.typing import WorkerSettingsBase
-    from arq.worker import create_worker
-
-    asyncio.set_event_loop(asyncio.new_event_loop())
-    worker = create_worker(cast("type[WorkerSettingsBase]", WorkerSettings))
-    worker.run()
