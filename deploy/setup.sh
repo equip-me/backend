@@ -23,17 +23,24 @@ prompt() {
     local input
     if [[ -n "$default" ]]; then
         read -rp "$(echo -e "${CYAN}$prompt_text${NC} [${default}]: ")" input
-        eval "$var_name=\"${input:-$default}\""
+        printf -v "$var_name" '%s' "${input:-$default}"
     else
         while true; do
             read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input
             if [[ -n "$input" ]]; then
-                eval "$var_name=\"$input\""
+                printf -v "$var_name" '%s' "$input"
                 break
             fi
             error "This field is required"
         done
     fi
+}
+
+prompt_optional() {
+    local var_name="$1" prompt_text="$2"
+    local input
+    read -rp "$(echo -e "${CYAN}$prompt_text${NC}: ")" input
+    printf -v "$var_name" '%s' "$input"
 }
 
 gen_secret() {
@@ -74,7 +81,7 @@ prompt GRAFANA_ADMIN_PASSWORD "Grafana admin password" "$(gen_secret 16)"
 
 echo ""
 info "External services"
-prompt DADATA_API_KEY "Dadata API key (optional, press Enter to skip)" ""
+prompt_optional DADATA_API_KEY "Dadata API key (optional, press Enter to skip)"
 
 # ── Computed values ──────────────────────────────────────
 API_HOST="api.${DOMAIN}"

@@ -3,6 +3,7 @@ services:
   nginx-proxy:
     image: nginxproxy/nginx-proxy:1.7
     container_name: nginx-proxy
+    restart: unless-stopped
     ports:
       - "80:80"
       - "443:443"
@@ -16,6 +17,7 @@ services:
 
   acme-companion:
     image: nginxproxy/acme-companion:2.5
+    restart: unless-stopped
     volumes:
       - certs:/etc/nginx/certs
       - vhost:/etc/nginx/vhost.d
@@ -32,6 +34,7 @@ services:
   # ── Application ────────────────────────────────────────
   app:
     image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    restart: unless-stopped
     environment:
       APP_ENV: prod
       DATABASE__HOST: db
@@ -53,9 +56,9 @@ services:
       LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_started
       otel-collector:
@@ -67,6 +70,7 @@ services:
 
   worker:
     image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    restart: unless-stopped
     environment:
       APP_ENV: prod
       DATABASE__HOST: db
@@ -79,9 +83,9 @@ services:
       WORKER__REDIS_URL: redis://redis:6379
     depends_on:
       db:
-        condition: service_started
+        condition: service_healthy
       redis:
-        condition: service_started
+        condition: service_healthy
       minio:
         condition: service_started
     command: python -m app.worker
@@ -91,24 +95,37 @@ services:
   # ── Data stores ────────────────────────────────────────
   db:
     image: postgres:17.4-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - internal
 
   redis:
     image: redis:7.4-alpine
+    restart: unless-stopped
     volumes:
       - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     networks:
       - internal
 
   minio:
     image: minio/minio:RELEASE.2025-03-12T18-04-18Z
+    restart: unless-stopped
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER}
@@ -126,6 +143,7 @@ services:
   # ── Observability ──────────────────────────────────────
   clickhouse:
     image: clickhouse/clickhouse-server:25.3
+    restart: unless-stopped
     mem_limit: 2g
     environment:
       CLICKHOUSE_DB: otel
@@ -143,6 +161,7 @@ services:
 
   otel-collector:
     image: otel/opentelemetry-collector-contrib:0.121.0
+    restart: unless-stopped
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
@@ -154,6 +173,7 @@ services:
 
   grafana:
     image: grafana/grafana:11.6.0
+    restart: unless-stopped
     environment:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
       GF_AUTH_ANONYMOUS_ENABLED: "false"
