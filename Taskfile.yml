@@ -91,3 +91,14 @@ tasks:
       - task: ruff
       - task: mypy
       - task: test
+
+  # ── Production deployment ─────────────────────────────
+  prod:setup:
+    desc: Provision a fresh VM with the production stack
+    cmds:
+      - ./deploy/setup.sh
+
+  prod:deploy:
+    desc: "Deploy a new app version (usage: task prod:deploy -- 0.5.0)"
+    cmds:
+      - ./deploy/deploy.sh {{.CLI_ARGS}}
