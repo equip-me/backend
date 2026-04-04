@@ -9,9 +9,8 @@ Only ``datetime.now`` is mocked for auto-transition scenarios.
 
 import datetime
 import io
-from collections.abc import Generator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import httpx
@@ -35,6 +34,7 @@ from app.media.models import Media
 from app.media.storage import StorageClient
 from app.users.models import User
 from app.worker.media import process_media_job
+from app.worker.orders import activate_order, finish_order
 
 pytestmark = pytest.mark.e2e
 
@@ -148,17 +148,6 @@ async def real_storage() -> StorageClient:
     return storage
 
 
-@pytest.fixture
-def mock_today() -> Generator[MagicMock]:
-    """Patch ``datetime.now`` in the orders service to return a controllable datetime."""
-    real_datetime = datetime.datetime
-    with patch("app.orders.service.datetime") as mock_dt:
-        mock_dt.now.return_value = real_datetime.now(tz=datetime.UTC)
-        mock_dt.side_effect = real_datetime
-        mock_dt.UTC = datetime.UTC
-        yield mock_dt
-
-
 # ---------------------------------------------------------------------------
 # The mega test
 # ---------------------------------------------------------------------------
@@ -167,7 +156,6 @@ def mock_today() -> Generator[MagicMock]:
 async def test_full_rental_journey(
     client: httpx.AsyncClient,
     real_storage: StorageClient,
-    mock_today: MagicMock,
 ) -> None:
     """Walk through the ENTIRE platform lifecycle in 21 steps.
 
@@ -465,12 +453,9 @@ async def test_full_rental_journey(
         assert approve_resp.json()["status"] == OrderStatus.CONFIRMED
 
         # ==================================================================
-        # Step 15: Mock date to start -> order active
+        # Step 15: Trigger activate worker job -> order active
         # ==================================================================
-        start_date = datetime.date.fromisoformat(start_str)
-        mock_today.now.return_value = datetime.datetime(
-            start_date.year, start_date.month, start_date.day, tzinfo=datetime.UTC
-        )
+        await activate_order({}, order1_id)
 
         get_order_resp = await client.get(f"/api/v1/orders/{order1_id}", headers=_auth(renter_token))
         assert get_order_resp.status_code == 200
@@ -483,13 +468,9 @@ async def test_full_rental_journey(
         assert listing_obj.status == ListingStatus.PUBLISHED
 
         # ==================================================================
-        # Step 17: Mock date past end -> order finished, listing published
+        # Step 17: Trigger finish worker job -> order finished, listing published
         # ==================================================================
-        end_date = datetime.date.fromisoformat(end_str)
-        past_end = end_date + datetime.timedelta(days=1)
-        mock_today.now.return_value = datetime.datetime(
-            past_end.year, past_end.month, past_end.day, tzinfo=datetime.UTC
-        )
+        await finish_order({}, order1_id)
 
         get_finished_resp = await client.get(f"/api/v1/orders/{order1_id}", headers=_auth(renter_token))
         assert get_finished_resp.status_code == 200
@@ -501,8 +482,6 @@ async def test_full_rental_journey(
         # ==================================================================
         # Step 18: Renter places second order (listing is published again)
         # ==================================================================
-        # Reset mock to real time so dates validate properly
-        mock_today.now.return_value = datetime.datetime.now(tz=datetime.UTC)
 
         start2_str, end2_str = _future_dates(days_ahead=20, duration=3)
 

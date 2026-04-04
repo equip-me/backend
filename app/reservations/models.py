@@ -1,10 +1,12 @@
+from typing import Any
+
 from tortoise import fields
 from tortoise.models import Model
 
 
 class Reservation(Model):
     id = fields.UUIDField(primary_key=True)
-    listing = fields.ForeignKeyField("models.Listing", related_name="reservations")
+    listing: Any = fields.ForeignKeyField("models.Listing", related_name="reservations")
     listing_id: str
     order_id = fields.CharField(max_length=20, unique=True)
     start_date = fields.DateField()

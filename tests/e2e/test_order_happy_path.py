@@ -34,7 +34,7 @@ async def _setup_order(
         headers=_auth(renter_token),
     )
     assert resp.status_code == 201
-    return resp.json()["id"]
+    return str(resp.json()["id"])
 
 
 async def _offer_order(
@@ -45,7 +45,7 @@ async def _offer_order(
     start_days: int = 2,
     end_days: int = 10,
     cost: str = "5000.00",
-) -> dict:
+) -> dict[str, Any]:
     resp = await client.patch(
         f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
         json={
@@ -56,25 +56,25 @@ async def _offer_order(
         headers=_auth(org_token),
     )
     assert resp.status_code == 200
-    return resp.json()
+    return dict(resp.json())
 
 
-async def _accept_order(client: AsyncClient, order_id: str, renter_token: str) -> dict:
+async def _accept_order(client: AsyncClient, order_id: str, renter_token: str) -> dict[str, Any]:
     resp = await client.patch(
         f"/api/v1/orders/{order_id}/accept",
         headers=_auth(renter_token),
     )
     assert resp.status_code == 200
-    return resp.json()
+    return dict(resp.json())
 
 
-async def _approve_order(client: AsyncClient, org_id: str, order_id: str, org_token: str) -> dict:
+async def _approve_order(client: AsyncClient, org_id: str, order_id: str, org_token: str) -> dict[str, Any]:
     resp = await client.patch(
         f"/api/v1/organizations/{org_id}/orders/{order_id}/approve",
         headers=_auth(org_token),
     )
     assert resp.status_code == 200
-    return resp.json()
+    return dict(resp.json())
 
 
 @pytest.mark.anyio
@@ -212,7 +212,7 @@ class TestOrderNegativeCases:
     async def test_order_unpublished_listing(
         self,
         client: AsyncClient,
-        verified_org: tuple[dict, str],
+        verified_org: tuple[dict[str, Any], str],
         seed_categories: list[ListingCategory],
         renter_token: str,
     ) -> None:

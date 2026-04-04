@@ -32,8 +32,8 @@ A B2B/B2C marketplace for renting equipment and other assets. Two actor types in
 2. Organization editors publish **Listings** in the catalog.
 3. A **User** finds a published listing and creates an **Order**.
 4. The organization reviews the order, optionally adjusts terms (cost, dates), and offers it back.
-5. The user confirms or declines. If confirmed, the rental proceeds for the agreed dates.
-6. Either party can cancel a confirmed or active order.
+5. The user accepts the offer. The organization then approves, creating a reservation that blocks the calendar dates.
+6. Either party can cancel a non-terminal order.
 
 ### External Integrations
 
@@ -327,7 +327,6 @@ A "Listing" is a rentable item published by an organization.
 |--------|-------|-------------|
 | HIDDEN | `hidden` | Default. Not visible in public catalog |
 | PUBLISHED | `published` | Visible in public catalog, available for ordering |
-| IN_RENT | `in_rent` | Currently being rented (set automatically by order lifecycle or manually by editor) |
 | ARCHIVED | `archived` | Removed from catalog by owner |
 
 ### 4.3 Listing Categories
@@ -403,7 +402,7 @@ Listings from unverified organizations are invisible to non-members. Direct acce
 
 ## 5. Order Lifecycle
 
-An order represents a rental request from a user for a specific listing owned by an organization. The flow is intentionally simple: request → offer → confirm → rent → finish.
+An order represents a rental request from a user for a specific listing owned by an organization. The flow is: request → offer → accept → org approve → rent → finish.
 
 ### 5.1 Order Data Model
 
@@ -429,20 +428,37 @@ There are 9 statuses:
 
 ```
 PENDING
-  ├──[org editor: offer]───────────► OFFERED
-  │                                    ├──[org editor: re-offer]──► OFFERED (updated terms)
-  │                                    ├──[user: confirm]──► CONFIRMED
-  │                                    │                       ├──[auto: offered_start_date arrives]──► ACTIVE
-  │                                    │                       │                                         ├──[auto: offered_end_date passes]──► FINISHED
-  │                                    │                       │                                  ├──[user: cancel]──► CANCELED_BY_USER
-  │                                    │                       │                                  └──[org: cancel]──► CANCELED_BY_ORGANIZATION
-  │                                    │                       ├──[user: cancel]──► CANCELED_BY_USER
-  │                                    │                       └──[org: cancel]──► CANCELED_BY_ORGANIZATION
-  │                                    └──[user: decline]──► DECLINED
-  └──[org editor: reject]─────────► REJECTED
+  ├──[org: offer]──────► OFFERED
+  │                        ├──[org: re-offer]──► OFFERED
+  │                        ├──[user: accept]──► ACCEPTED
+  │                        │                      ├──[org: approve]──► CONFIRMED ──[auto]──► ACTIVE ──[auto]──► FINISHED
+  │                        │                      ├──[org: re-offer]──► OFFERED
+  │                        │                      ├──[org: cancel]──► CANCELED_BY_ORGANIZATION
+  │                        │                      ├──[user: cancel]──► CANCELED_BY_USER
+  │                        │                      └──[auto: start_date passes]──► EXPIRED
+  │                        ├──[user: cancel]──► CANCELED_BY_USER
+  │                        ├──[org: cancel]──► CANCELED_BY_ORGANIZATION
+  │                        └──[auto: start_date passes]──► EXPIRED
+  ├──[org: cancel]─────► CANCELED_BY_ORGANIZATION
+  ├──[user: cancel]────► CANCELED_BY_USER
+  └──[auto: start_date passes]──► EXPIRED
 ```
 
-**Terminal statuses** (no further transitions): `finished`, `rejected`, `declined`, `canceled_by_user`, `canceled_by_organization`.
+**Statuses:**
+
+| Status | Description |
+|--------|-------------|
+| `pending` | Initial state. Awaiting organization response. |
+| `offered` | Organization proposed terms. Awaiting user decision. |
+| `accepted` | User accepted offered terms, awaiting org approval. |
+| `confirmed` | Organization approved. Awaiting rental start. |
+| `active` | Rental in progress. |
+| `finished` | Rental complete. Terminal. |
+| `canceled_by_user` | Canceled by the user. Terminal. |
+| `canceled_by_organization` | Canceled by the organization. Terminal. |
+| `expired` | Start date passed without reaching CONFIRMED. Terminal. |
+
+**Terminal statuses** (no further transitions): `finished`, `canceled_by_user`, `canceled_by_organization`, `expired`.
 
 ### 5.3 Transition Rules (Detailed)
 
@@ -460,58 +476,88 @@ PENDING
 
 #### Organization Offers Terms
 - **Who:** Org Editor (listing's organization)
-- **Required status:** `pending` or `offered` (re-offer to update terms before user decides)
+- **Required status:** `pending`, `offered`, or `accepted` (re-offer to update terms before org approves)
 - **Required fields:** `offered_cost` (must be positive), `offered_start_date`, `offered_end_date` (start ≤ end). All three must be provided. The frontend pre-fills them from `estimated_cost`, `requested_start_date`, `requested_end_date`; the editor adjusts if needed.
 - **Transition:** → `offered`
-- **Semantics:** After the user confirms the order, the `offered_*` fields become the **source of truth** for the rental terms (cost, start date, end date).
+- **Semantics:** After approval, the `offered_*` fields become the **source of truth** for the rental terms (cost, start date, end date).
 
-#### Organization Rejects Order
-- **Who:** Org Editor
-- **Required status:** `pending`
-- **Transition:** → `rejected`
-
-#### User Confirms Order
+#### User Accepts Offer
 - **Who:** Requester (the user who placed the order)
 - **Required status:** `offered`
+- **Transition:** → `accepted`
+- **Business meaning:** User agrees to the offered terms; organization must now approve to confirm the booking
+
+#### Organization Approves Order
+- **Who:** Org Editor (listing's organization)
+- **Required status:** `accepted`
+- **Side effects:**
+  - Overlap validation: if any existing `Reservation` for the same listing overlaps the offered dates, the approval is rejected with 409 Conflict
+  - A `Reservation` record is created, blocking those dates for the listing
 - **Transition:** → `confirmed`
-- **Business meaning:** User agrees to the (possibly adjusted) terms
-
-#### User Declines Order
-- **Who:** Requester
-- **Required status:** `offered`
-- **Transition:** → `declined`
-- **Business meaning:** User does not agree with the offered terms
-
-#### Automatic: Rent Starts
-- **Trigger:** `today >= offered_start_date` (currently implemented as lazy evaluation on read; planned migration to Temporal workflow)
-- **Required status:** `confirmed`
-- **Transition:** → `active`
-- **Side effect:** Listing status is set to `in_rent`
-
-#### Automatic: Rent Ends
-- **Trigger:** `today > offered_end_date` (lazy evaluation on read)
-- **Required status:** `active`
-- **Transition:** → `finished`
-- **Side effect:** Listing status returns to `published`
-- **Chaining:** If both dates have passed when an order is read (e.g., confirmed while offline), the transitions chain: `confirmed → active → finished` in a single read. The listing ends at `published` (skipping the transient `in_rent` state).
 
 #### User Cancels Order
 - **Who:** Requester
-- **Allowed in:** `confirmed` or `active`
+- **Allowed in:** `pending`, `offered`, `accepted`, `confirmed`, or `active`
 - **Transition:** → `canceled_by_user`
-- **Side effect:** If listing was `in_rent`, its status returns to `published`
+- **Side effect:** If a `Reservation` exists for this order (status was `confirmed` or `active`), it is deleted
 
 #### Organization Cancels Order
 - **Who:** Org Editor
-- **Allowed in:** `confirmed` or `active`
+- **Allowed in:** `pending`, `offered`, `accepted`, `confirmed`, or `active`
 - **Transition:** → `canceled_by_organization`
-- **Side effect:** If listing was `in_rent`, its status returns to `published`
+- **Side effect:** If a `Reservation` exists for this order (status was `confirmed` or `active`), it is deleted
 
-### 5.4 Per-Order Chat
+#### Automatic: Expiration
+- **Trigger:** Start date passes while order is in `pending`, `offered`, or `accepted`
+- **Transition:** → `expired`
+- **Handled by:** Background ARQ job
+
+#### Automatic: Rent Starts
+- **Trigger:** `today >= offered_start_date`
+- **Required status:** `confirmed`
+- **Transition:** → `active`
+- **Handled by:** Background ARQ job
+
+#### Automatic: Rent Ends
+- **Trigger:** `today > offered_end_date`
+- **Required status:** `active`
+- **Transition:** → `finished`
+- **Handled by:** Background ARQ job
+
+### 5.4 Reservations
+
+A `Reservation` blocks a listing's calendar for a confirmed booking. It is the authoritative source for availability.
+
+#### Reservation Data Model
+
+| Field | Type | Constraints | Description |
+|-------|------|-------------|-------------|
+| id | UUID | PK | |
+| listing | FK → Listing | required | The reserved listing |
+| order | FK → Order | required, unique | The order that created this reservation |
+| start_date | date | required | Reservation start (= order's `offered_start_date`) |
+| end_date | date | required | Reservation end (= order's `offered_end_date`) |
+| created_at | datetime | auto | |
+
+#### Lifecycle
+
+- **Created** when an order reaches `confirmed` (organization approves)
+- **Deleted** when an order is canceled from `confirmed` or `active`
+- **Kept as historical record** when an order reaches `finished`
+
+#### Overlap Validation
+
+Before creating a reservation, the system checks for any existing `Reservation` on the same listing where the date ranges overlap. If any overlap exists, the approval request is rejected with 409 Conflict.
+
+#### Calendar Endpoint
+
+`GET /api/v1/listings/{listing_id}/reservations` — Public. Returns reservations where `end_date >= today`.
+
+### 5.5 Per-Order Chat
 
 Each order implicitly has a dedicated chat room. See [Section 6](#6-chat) for the full specification.
 
-### 5.5 Order Access Rules
+### 5.6 Order Access Rules
 
 **User-side access:**
 - The user is the order's `requester`.
@@ -519,7 +565,7 @@ Each order implicitly has a dedicated chat room. See [Section 6](#6-chat) for th
 **Organization-side access:**
 - The user has `editor` or `admin` membership in the order's `organization`.
 
-### 5.6 Order API Summary
+### 5.7 Order API Summary
 
 **User (renter) endpoints:**
 
@@ -528,9 +574,8 @@ Each order implicitly has a dedicated chat room. See [Section 6](#6-chat) for th
 | POST | `/api/v1/orders/` | Authenticated | Place order for a listing |
 | GET | `/api/v1/orders/` | Authenticated | List my orders |
 | GET | `/api/v1/orders/{id}` | Authenticated (requester) | Get order detail |
-| PATCH | `/api/v1/orders/{id}/confirm` | Authenticated (requester) | Accept the offered terms |
-| PATCH | `/api/v1/orders/{id}/decline` | Authenticated (requester) | Decline the offered terms |
-| PATCH | `/api/v1/orders/{id}/cancel` | Authenticated (requester) | Cancel confirmed/active order |
+| PATCH | `/api/v1/orders/{id}/accept` | Authenticated (requester) | Accept the offered terms |
+| PATCH | `/api/v1/orders/{id}/cancel` | Authenticated (requester) | Cancel order from any non-terminal state |
 
 **Organization (owner) endpoints:**
 
@@ -538,9 +583,15 @@ Each order implicitly has a dedicated chat room. See [Section 6](#6-chat) for th
 |--------|------|------|---------|
 | GET | `/api/v1/organizations/{org_id}/orders/` | Org Editor | List incoming orders |
 | GET | `/api/v1/organizations/{org_id}/orders/{id}` | Org Editor | Get order detail |
-| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/offer` | Org Editor | Accept and offer terms (cost, dates) |
-| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/reject` | Org Editor | Reject order |
-| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/cancel` | Org Editor | Cancel confirmed/active order |
+| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/offer` | Org Editor | Offer or re-offer terms (cost, dates) |
+| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/approve` | Org Editor | Approve and create reservation |
+| PATCH | `/api/v1/organizations/{org_id}/orders/{id}/cancel` | Org Editor | Cancel order from any non-terminal state |
+
+**Listing calendar endpoint:**
+
+| Method | Path | Auth | Purpose |
+|--------|------|------|---------|
+| GET | `/api/v1/listings/{listing_id}/reservations` | Public | List active/future reservations for a listing |
 
 ---
 
@@ -569,13 +620,13 @@ Org `viewer` members and non-members cannot access chat.
 
 The chat switches between **active** (read-write) and **read-only** modes based on the order status and a cooldown period.
 
-**Terminal order statuses:** `finished`, `rejected`, `declined`, `canceled_by_user`, `canceled_by_organization`
+**Terminal order statuses:** `finished`, `canceled_by_user`, `canceled_by_organization`, `expired`
 
 **Cooldown:** configurable (default **7 days**), measured from the timestamp of the last message, or `order.updated_at` if no messages exist.
 
 | Condition | Chat mode |
 |-----------|-----------|
-| Order in non-terminal status (`pending`, `offered`, `confirmed`, `active`) | Active (read-write) |
+| Order in non-terminal status (`pending`, `offered`, `accepted`, `confirmed`, `active`) | Active (read-write) |
 | Order in terminal status AND within cooldown period | Active (read-write) |
 | Order in terminal status AND cooldown period expired | Read-only |
 
@@ -788,7 +839,12 @@ Listing (PK: id)
 Order (PK: id)
   ├── FK ── Listing
   ├── FK ── Organization
-  └── FK ── User (requester)
+  ├── FK ── User (requester)
+  └── 0:1 ── Reservation (order FK, unique)
+
+Reservation (PK: id)
+  ├── FK ── Listing
+  └── FK ── Order (unique)
 
 Media (PK: id)
   └── FK ── User (uploaded_by)
@@ -830,33 +886,32 @@ Media (PK: id)
 |-------|-------------|
 | `hidden` | Not visible in public catalog (default for new listings) |
 | `published` | Visible in public catalog, available for ordering |
-| `in_rent` | Currently being rented (set automatically by order lifecycle or manually by editor) |
 | `archived` | Removed from catalog by owner |
 
 #### OrderStatus
 | Value | Description |
 |-------|-------------|
 | `pending` | Initial state. Awaiting organization response. |
-| `offered` | Organization accepted and proposed terms. Awaiting user decision. |
-| `rejected` | Organization rejected the order. Terminal. |
-| `confirmed` | User accepted the offer. Awaiting rental start. |
-| `declined` | User declined the offer. Terminal. |
-| `active` | Rental in progress (offered_start_date has arrived). |
-| `finished` | Rental complete (offered_end_date has passed). Terminal. |
+| `offered` | Organization proposed terms. Awaiting user decision. |
+| `accepted` | User accepted offered terms, awaiting org approval. |
+| `confirmed` | Organization approved. Awaiting rental start. |
+| `active` | Rental in progress. |
+| `finished` | Rental complete. Terminal. |
 | `canceled_by_user` | Canceled by the user. Terminal. |
 | `canceled_by_organization` | Canceled by the organization. Terminal. |
+| `expired` | Start date passed without reaching CONFIRMED. Terminal. |
 
 #### OrderAction
 | Value | Actor | Description |
 |-------|-------|-------------|
 | `offer_by_org` | Organization | Offer or re-offer rental terms |
-| `reject_by_org` | Organization | Reject the order request |
-| `confirm_by_user` | User | Accept the offered terms |
-| `decline_by_user` | User | Decline the offered terms |
-| `cancel_by_user` | User | Cancel a confirmed or active order |
-| `cancel_by_org` | Organization | Cancel a confirmed or active order |
-| `activate` | System | Rental period starts (lazy eval / Temporal) |
-| `finish` | System | Rental period ends (lazy eval / Temporal) |
+| `accept_by_user` | User | Accept the offered terms |
+| `approve_by_org` | Organization | Approve and create reservation |
+| `cancel_by_user` | User | Cancel order from any non-terminal state |
+| `cancel_by_org` | Organization | Cancel order from any non-terminal state |
+| `expire` | System | Start date passed without reaching CONFIRMED |
+| `activate` | System | Rental period starts (ARQ job) |
+| `finish` | System | Rental period ends (ARQ job) |
 
 #### MediaKind
 | Value | Description |

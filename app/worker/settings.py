@@ -1,4 +1,4 @@
-from typing import Any, ClassVar, cast
+from typing import Any, ClassVar, Protocol, cast
 
 from arq import create_pool, func
 from arq.connections import ArqRedis, RedisSettings
@@ -8,13 +8,21 @@ from arq.typing import WorkerCoroutine
 from app.core.config import get_settings
 
 
+class WorkerSettingsClass(Protocol):
+    """Protocol describing the class returned by _build_worker_settings."""
+
+    functions: ClassVar[list[Any]]
+    cron_jobs: ClassVar[list[Any]]
+    redis_settings: ClassVar[RedisSettings]
+
+
 async def get_arq_pool() -> ArqRedis:
     settings = get_settings()
     redis_settings = RedisSettings.from_dsn(settings.worker.redis_url)
     return await create_pool(redis_settings)
 
 
-def _build_worker_settings() -> type:
+def _build_worker_settings() -> type[WorkerSettingsClass]:
     """Build WorkerSettings class with all functions and crons aggregated."""
     from app.worker.chat import notify_new_chat_message
     from app.worker.media import cleanup_orphans_cron, process_media_job

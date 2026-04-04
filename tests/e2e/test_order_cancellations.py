@@ -30,7 +30,7 @@ async def _create_pending_order(
         headers=_auth(renter_token),
     )
     assert resp.status_code == 201
-    return resp.json()["id"]
+    return str(resp.json()["id"])
 
 
 async def _advance_to_offered(
