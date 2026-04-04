@@ -168,9 +168,6 @@ if __name__ == "__main__":
     from arq.typing import WorkerSettingsBase
     from arq.worker import create_worker
 
-    async def _main() -> None:
-        cls = cast("type[WorkerSettingsBase]", WorkerSettings)
-        worker = create_worker(cls)
-        await worker.main()
-
-    asyncio.run(_main())
+    asyncio.set_event_loop(asyncio.new_event_loop())
+    worker = create_worker(cast("type[WorkerSettingsBase]", WorkerSettings))
+    worker.run()
