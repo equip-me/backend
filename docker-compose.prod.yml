@@ -1,15 +1,20 @@
 services:
   db:
-    image: postgres:17
+    image: postgres:17.5
     environment:
       POSTGRES_USER: ${POSTGRES_USER}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   clickhouse:
-    image: clickhouse/clickhouse-server
+    image: clickhouse/clickhouse-server:26.3.1
     mem_limit: 2g
     environment:
       CLICKHOUSE_DB: otel
@@ -24,16 +29,18 @@ services:
       retries: 10
 
   otel-collector:
-    image: otel/opentelemetry-collector-contrib
+    image: otel/opentelemetry-collector-contrib:0.149.0
     command: ["--config=/etc/otelcol-contrib/config.yaml"]
     volumes:
       - ./config/otel-collector-prod.yaml:/etc/otelcol-contrib/config.yaml:ro
+    environment:
+      CLICKHOUSE_PASSWORD: ${CLICKHOUSE_PASSWORD:-clickhouse}
     depends_on:
       clickhouse:
         condition: service_healthy
 
   grafana:
-    image: grafana/grafana
+    image: grafana/grafana:12.4.2
     environment:
       GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
       GF_AUTH_ANONYMOUS_ENABLED: "false"
@@ -57,16 +64,20 @@ services:
       - minio_data:/data
 
   redis:
-    image: redis:7-alpine
+    image: redis:7.2.4-alpine
     volumes:
       - redis_data:/data
 
   app:
-    image: rental-platform:${APP_VERSION:-latest}
+    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
     environment:
       APP_ENV: prod
-      DATABASE_PASSWORD: ${POSTGRES_PASSWORD}
-      JWT_SECRET: ${JWT_SECRET}
+      DATABASE__HOST: db
+      DATABASE__PORT: "5432"
+      DATABASE__USER: ${POSTGRES_USER}
+      DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE__NAME: ${POSTGRES_DB}
+      JWT__SECRET: ${JWT_SECRET}
       DADATA_API_KEY: ${DADATA_API_KEY:-}
       OBSERVABILITY__OTLP_ENDPOINT: otel-collector:4317
       STORAGE__ENDPOINT_URL: http://minio:9000
@@ -76,24 +87,54 @@ services:
     ports:
       - "8000:8000"
     depends_on:
-      - db
-      - otel-collector
+      db:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
     command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
 
   worker:
-    image: rental-platform:${APP_VERSION:-latest}
+    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
     environment:
       APP_ENV: prod
+      DATABASE__HOST: db
+      DATABASE__PORT: "5432"
+      DATABASE__USER: ${POSTGRES_USER}
       DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE__NAME: ${POSTGRES_DB}
       STORAGE__ENDPOINT_URL: http://minio:9000
       STORAGE__ACCESS_KEY: ${MINIO_ROOT_USER}
       STORAGE__SECRET_KEY: ${MINIO_ROOT_PASSWORD}
       WORKER__REDIS_URL: redis://redis:6379
     depends_on:
-      - db
-      - minio
-      - redis
+      db:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      redis:
+        condition: service_started
     command: python -m app.media.worker
+
+  migrate:
+    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    environment:
+      APP_ENV: prod
+      DATABASE__HOST: db
+      DATABASE__PORT: "5432"
+      DATABASE__USER: ${POSTGRES_USER}
+      DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+      DATABASE__NAME: ${POSTGRES_DB}
+    depends_on:
+      db:
+        condition: service_healthy
+    command: tortoise migrate
+    restart: "no"
+    profiles:
+      - migrate
 
 volumes:
   pgdata:

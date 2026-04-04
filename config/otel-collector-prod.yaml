@@ -15,7 +15,7 @@ exporters:
   clickhouse:
     endpoint: tcp://clickhouse:9000
     username: default
-    password: clickhouse
+    password: ${env:CLICKHOUSE_PASSWORD}
     database: otel
     create_schema: true
     ttl_days: 30
