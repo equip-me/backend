@@ -1,6 +1,11 @@
+import asyncio
+import logging
+
 import aioboto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
+
+logger = logging.getLogger(__name__)
 
 
 class StorageClient:
@@ -23,12 +28,21 @@ class StorageClient:
     def bucket(self) -> str:
         return self._bucket
 
-    async def ensure_bucket(self) -> None:
-        async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
+    async def ensure_bucket(self, *, retries: int = 5, delay: float = 2.0) -> None:
+        for attempt in range(1, retries + 1):
             try:
-                await s3.head_bucket(Bucket=self._bucket)
-            except ClientError:
-                await s3.create_bucket(Bucket=self._bucket)
+                async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
+                    try:
+                        await s3.head_bucket(Bucket=self._bucket)
+                    except ClientError:
+                        await s3.create_bucket(Bucket=self._bucket)
+            except ClientError as exc:
+                if attempt == retries:
+                    raise
+                logger.warning("Storage not ready (attempt %d/%d): %s", attempt, retries, exc)
+                await asyncio.sleep(delay)
+            else:
+                return
 
     async def generate_upload_url(self, key: str, content_type: str, expires: int) -> str:
         async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:

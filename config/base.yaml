@@ -19,7 +19,7 @@ observability:
   enabled: true
   otlp_endpoint: "localhost:4317"
   service_name: "rental-platform"
-  console_log_level: "DEBUG"
+  console_log_level: "INFO"
   otel_log_level: "DEBUG"
   metrics_export_interval_seconds: 30
 

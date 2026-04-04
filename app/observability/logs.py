@@ -58,6 +58,10 @@ def setup_logging(resource: Resource, endpoint: str, console_level: str, otel_le
     root_logger.addHandler(console_handler)
     root_logger.addHandler(otel_handler)
 
+    # Suppress noisy third-party loggers
+    for name in ("botocore", "aiobotocore", "urllib3", "s3transfer"):
+        logging.getLogger(name).setLevel(logging.WARNING)
+
 
 def shutdown_logging() -> None:
     if _provider is not None:
