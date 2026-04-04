@@ -1,0 +1,75 @@
+{
+  "title": "API Overview",
+  "uid": "api-overview",
+  "tags": ["rental-platform"],
+  "time": {"from": "now-1h", "to": "now"},
+  "refresh": "30s",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Request Rate by Endpoint",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, SpanAttributes['http.route'] AS route, count() AS requests FROM otel.otel_traces WHERE SpanKind = 'Server' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time, route ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Latency p50 / p95 / p99",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, quantile(0.50)(Duration / 1000000) AS p50_ms, quantile(0.95)(Duration / 1000000) AS p95_ms, quantile(0.99)(Duration / 1000000) AS p99_ms FROM otel.otel_traces WHERE SpanKind = 'Server' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Error Rate by Status Code",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfMinute(Timestamp) AS time, SpanAttributes['http.response.status_code'] AS status, count() AS cnt FROM otel.otel_traces WHERE SpanKind = 'Server' AND toInt32OrZero(SpanAttributes['http.response.status_code']) >= 400 AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time, status ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "stat",
+      "title": "Active Requests (Last Minute)",
+      "gridPos": {"h": 4, "w": 6, "x": 12, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT count() AS active FROM otel.otel_traces WHERE SpanKind = 'Server' AND Timestamp >= now() - INTERVAL 1 MINUTE AND Duration = 0",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "Top 10 Slowest Endpoints (Last Hour)",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 12},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT SpanAttributes['http.route'] AS route, SpanAttributes['http.request.method'] AS method, quantile(0.95)(Duration / 1000000) AS p95_ms, count() AS requests FROM otel.otel_traces WHERE SpanKind = 'Server' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY route, method ORDER BY p95_ms DESC LIMIT 10",
+          "refId": "A",
+          "format": 2
+        }
+      ]
+    }
+  ]
+}

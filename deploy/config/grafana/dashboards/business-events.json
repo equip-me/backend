@@ -1,0 +1,88 @@
+{
+  "title": "Business Events",
+  "uid": "business-events",
+  "tags": ["rental-platform"],
+  "time": {"from": "now-6h", "to": "now"},
+  "refresh": "1m",
+  "schemaVersion": 39,
+  "panels": [
+    {
+      "type": "timeseries",
+      "title": "Order Creation Rate",
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfFiveMinutes(Timestamp) AS time, count() AS orders FROM otel.otel_logs WHERE LogAttributes['event.name'] = 'order.created' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Order Status Transitions",
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 0},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfFiveMinutes(Timestamp) AS time, LogAttributes['new_status'] AS new_status, count() AS transitions FROM otel.otel_logs WHERE LogAttributes['event.name'] = 'order.status_changed' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time, new_status ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "piechart",
+      "title": "Auth Success / Failure Ratio",
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT CASE WHEN LogAttributes['event.name'] = 'user.authenticated' THEN 'success' WHEN LogAttributes['event.name'] = 'user.auth_failed' THEN 'failed' ELSE 'other' END AS result, count() AS cnt FROM otel.otel_logs WHERE LogAttributes['event.name'] IN ('user.authenticated', 'user.auth_failed') AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY result",
+          "refId": "A",
+          "format": 2
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Organization Registrations",
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfFiveMinutes(Timestamp) AS time, count() AS registrations FROM otel.otel_logs WHERE LogAttributes['event.name'] = 'organization.created' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Dadata Call Success Rate & Latency",
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 8},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfFiveMinutes(Timestamp) AS time, LogAttributes['success'] AS success, count() AS calls, avg(toFloat64OrZero(LogAttributes['duration_ms'])) AS avg_ms FROM otel.otel_logs WHERE LogAttributes['event.name'] = 'dadata.called' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time, success ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    },
+    {
+      "type": "timeseries",
+      "title": "Event Rate by Type",
+      "gridPos": {"h": 8, "w": 24, "x": 0, "y": 16},
+      "datasource": {"type": "grafana-clickhouse-datasource", "uid": "clickhouse"},
+      "targets": [
+        {
+          "rawSql": "SELECT toStartOfFiveMinutes(Timestamp) AS time, LogAttributes['event.name'] AS event, count() AS cnt FROM otel.otel_logs WHERE LogAttributes['event.name'] != '' AND Timestamp >= $__fromTime AND Timestamp <= $__toTime GROUP BY time, event ORDER BY time",
+          "refId": "A",
+          "format": 1
+        }
+      ]
+    }
+  ]
+}
