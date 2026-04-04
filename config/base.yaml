@@ -31,6 +31,7 @@ seed_categories:
 
 storage:
   endpoint_url: "http://localhost:9000"
+  presigned_endpoint_url: "http://localhost:9000"
   bucket: "rental-media"
   presigned_url_expiry_seconds: 3600
 

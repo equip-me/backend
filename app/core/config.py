@@ -41,6 +41,7 @@ class ObservabilitySettings(BaseModel):
 
 class StorageSettings(BaseModel):
     endpoint_url: str = "http://localhost:9000"
+    presigned_endpoint_url: str = ""
     bucket: str = "rental-media"
     presigned_url_expiry_seconds: int = 3600
     access_key: str = ""
