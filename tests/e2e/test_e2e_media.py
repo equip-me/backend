@@ -17,8 +17,8 @@ from app.core.config import get_settings
 from app.core.enums import MediaContext, MediaKind, MediaStatus
 from app.media.models import Media
 from app.media.storage import StorageClient
-from app.media.worker import process_media_job
 from app.users.models import User
+from app.worker.media import process_media_job
 
 pytestmark = pytest.mark.e2e
 
@@ -133,7 +133,7 @@ async def test_photo_e2e(real_storage: StorageClient, db_user: User) -> None:
     await media.save()
 
     try:
-        with patch("app.media.worker._get_storage", return_value=real_storage):
+        with patch("app.worker.media._get_storage", return_value=real_storage):
             await process_media_job({}, str(media.id))
 
         await media.refresh_from_db()
@@ -190,7 +190,7 @@ async def test_video_e2e(real_storage: StorageClient, db_user: User) -> None:
     await media.save()
 
     try:
-        with patch("app.media.worker._get_storage", return_value=real_storage):
+        with patch("app.worker.media._get_storage", return_value=real_storage):
             await process_media_job({}, str(media.id))
 
         await media.refresh_from_db()
@@ -237,7 +237,7 @@ async def test_document_e2e(real_storage: StorageClient, db_user: User) -> None:
     await media.save()
 
     try:
-        with patch("app.media.worker._get_storage", return_value=real_storage):
+        with patch("app.worker.media._get_storage", return_value=real_storage):
             await process_media_job({}, str(media.id))
 
         await media.refresh_from_db()
@@ -280,7 +280,7 @@ async def test_profile_photo_e2e(real_storage: StorageClient, db_user: User) -> 
     await media.save()
 
     try:
-        with patch("app.media.worker._get_storage", return_value=real_storage):
+        with patch("app.worker.media._get_storage", return_value=real_storage):
             await process_media_job({}, str(media.id))
 
         await media.refresh_from_db()
@@ -330,7 +330,7 @@ async def test_processing_failure_e2e(real_storage: StorageClient, db_user: User
     await media.save()
 
     try:
-        with patch("app.media.worker._get_storage", return_value=real_storage):
+        with patch("app.worker.media._get_storage", return_value=real_storage):
             with pytest.raises(UnidentifiedImageError):
                 await process_media_job({}, str(media.id))
 

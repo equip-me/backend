@@ -310,7 +310,7 @@ class TestChatWebSocket:
         order_id, _org_id, _org_token, renter_token = create_order_for_chat
 
         order = await Order.get(id=order_id)
-        order.status = OrderStatus.REJECTED
+        order.status = OrderStatus.CANCELED_BY_ORGANIZATION
         await order.save()
         from tortoise import connections
 

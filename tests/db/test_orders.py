@@ -367,16 +367,22 @@ class TestOfferOrder:
             "offered_end_date": end.isoformat(),
         }
 
+        # Advance to CONFIRMED via offer -> accept -> approve
         await client.patch(
             f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json=offer_data,
             headers={"Authorization": f"Bearer {org_token}"},
         )
         await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
 
+        # Re-offering from CONFIRMED should be rejected
         resp = await client.patch(
             f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
             json=offer_data,
@@ -458,8 +464,8 @@ class TestOrderNotFound:
 
 
 @pytest.mark.anyio
-class TestRejectOrder:
-    async def test_reject_success(
+class TestOrgCancelFromPending:
+    async def test_org_cancel_pending_success(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
@@ -469,43 +475,39 @@ class TestRejectOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/api/v1/organizations/{org_id}/orders/{order['id']}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "rejected"
+        assert resp.json()["status"] == "canceled_by_organization"
 
-    async def test_reject_non_pending(
+    async def test_org_cancel_finished_fails(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
         renter_token: str,
     ) -> None:
+        """Cancel from a terminal status should fail."""
         listing_id, org_id, org_token = create_listing
         order = await _create_order(client, listing_id, renter_token)
 
-        start = _today() + timedelta(days=2)
-        end = start + timedelta(days=5)
+        # Cancel first (terminal)
         await client.patch(
-            f"/api/v1/organizations/{org_id}/orders/{order['id']}/offer",
-            json={
-                "offered_cost": "30000.00",
-                "offered_start_date": start.isoformat(),
-                "offered_end_date": end.isoformat(),
-            },
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {org_token}"},
         )
 
+        # Try to cancel again from terminal status
         resp = await client.patch(
-            f"/api/v1/organizations/{org_id}/orders/{order['id']}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 400
 
 
 @pytest.mark.anyio
-class TestConfirmOrder:
-    async def test_confirm_success(
+class TestAcceptOrder:
+    async def test_accept_success(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
@@ -515,13 +517,13 @@ class TestConfirmOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         resp = await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
-        assert resp.json()["status"] == "confirmed"
+        assert resp.json()["status"] == "accepted"
 
-    async def test_confirm_not_requester(
+    async def test_accept_not_requester(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
@@ -538,12 +540,12 @@ class TestConfirmOrder:
             surname="User",
         )
         resp = await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {other_token}"},
         )
         assert resp.status_code == 403
 
-    async def test_confirm_non_offered(
+    async def test_accept_non_offered(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
@@ -553,15 +555,15 @@ class TestConfirmOrder:
         order = await _create_order(client, listing_id, renter_token)
 
         resp = await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 400
 
 
 @pytest.mark.anyio
-class TestDeclineOrder:
-    async def test_decline_success(
+class TestApproveOrder:
+    async def test_approve_success(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
@@ -570,25 +572,31 @@ class TestDeclineOrder:
         listing_id, org_id, org_token = create_listing
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
-        resp = await client.patch(
-            f"/api/v1/orders/{order['id']}/decline",
+        await client.patch(
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "declined"
 
-    async def test_decline_non_offered(
+        resp = await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "confirmed"
+
+    async def test_approve_non_accepted(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
         renter_token: str,
     ) -> None:
-        listing_id, _org_id, _org_token = create_listing
-        order = await _create_order(client, listing_id, renter_token)
+        """Approve from offered (not accepted) should fail."""
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         resp = await client.patch(
-            f"/api/v1/orders/{order['id']}/decline",
-            headers={"Authorization": f"Bearer {renter_token}"},
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
+            headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 400
 
@@ -605,8 +613,12 @@ class TestCancelOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
+            headers={"Authorization": f"Bearer {org_token}"},
         )
 
         resp = await client.patch(
@@ -626,8 +638,12 @@ class TestCancelOrder:
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
+            headers={"Authorization": f"Bearer {org_token}"},
         )
 
         resp = await client.patch(
@@ -637,14 +653,37 @@ class TestCancelOrder:
         assert resp.status_code == 200
         assert resp.json()["status"] == "canceled_by_organization"
 
-    async def test_cancel_pending_fails(
+    async def test_cancel_pending_success(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
         renter_token: str,
     ) -> None:
+        """Canceling from pending is allowed in the new lifecycle."""
         listing_id, _org_id, _org_token = create_listing
         order = await _create_order(client, listing_id, renter_token)
+
+        resp = await client.patch(
+            f"/api/v1/orders/{order['id']}/cancel",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "canceled_by_user"
+
+    async def test_cancel_terminal_fails(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        """Canceling from a terminal status (already canceled) should fail."""
+        listing_id, _org_id, _org_token = create_listing
+        order = await _create_order(client, listing_id, renter_token)
+
+        await client.patch(
+            f"/api/v1/orders/{order['id']}/cancel",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
 
         resp = await client.patch(
             f"/api/v1/orders/{order['id']}/cancel",
@@ -806,78 +845,23 @@ class TestGetOrder:
 
 @pytest.mark.anyio
 class TestListingSideEffects:
-    async def test_cancel_active_restores_listing_to_published(
+    async def test_listing_stays_published_after_cancel_confirmed(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
         renter_token: str,
     ) -> None:
-        listing_id, org_id, org_token = create_listing
-
-        start = _today()
-        end = start + timedelta(days=5)
-        resp = await client.post(
-            "/api/v1/orders/",
-            json={
-                "listing_id": listing_id,
-                "requested_start_date": start.isoformat(),
-                "requested_end_date": end.isoformat(),
-            },
-            headers={"Authorization": f"Bearer {renter_token}"},
-        )
-        assert resp.status_code == 201
-        order_id = resp.json()["id"]
-
-        await client.patch(
-            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
-            json={
-                "offered_cost": "25000.00",
-                "offered_start_date": start.isoformat(),
-                "offered_end_date": end.isoformat(),
-            },
-            headers={"Authorization": f"Bearer {org_token}"},
-        )
-
-        await client.patch(
-            f"/api/v1/orders/{order_id}/confirm",
-            headers={"Authorization": f"Bearer {renter_token}"},
-        )
-
-        # Fetch the order — lazy eval should transition to active since start is today
-        resp = await client.get(
-            f"/api/v1/orders/{order_id}",
-            headers={"Authorization": f"Bearer {renter_token}"},
-        )
-        assert resp.json()["status"] == "active"
-
-        # Check listing is in_rent
-        resp = await client.get(f"/api/v1/listings/{listing_id}")
-        assert resp.json()["status"] == "in_rent"
-
-        # Cancel the order
-        resp = await client.patch(
-            f"/api/v1/orders/{order_id}/cancel",
-            headers={"Authorization": f"Bearer {renter_token}"},
-        )
-        assert resp.status_code == 200
-        assert resp.json()["status"] == "canceled_by_user"
-
-        # Check listing is published again
-        resp = await client.get(f"/api/v1/listings/{listing_id}")
-        assert resp.json()["status"] == "published"
-
-    async def test_cancel_confirmed_does_not_change_listing(
-        self,
-        client: AsyncClient,
-        create_listing: tuple[str, str, str],
-        renter_token: str,
-    ) -> None:
+        """Listing stays published when confirmed order is canceled (reservation deleted)."""
         listing_id, org_id, org_token = create_listing
         order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
         await client.patch(
-            f"/api/v1/orders/{order['id']}/confirm",
+            f"/api/v1/orders/{order['id']}/accept",
             headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
+            headers={"Authorization": f"Bearer {org_token}"},
         )
 
         resp = await client.get(f"/api/v1/listings/{listing_id}")
@@ -891,53 +875,53 @@ class TestListingSideEffects:
         resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"
 
-    async def test_finished_order_restores_listing_to_published(
+    async def test_listing_stays_published_after_cancel_offered(
         self,
         client: AsyncClient,
         create_listing: tuple[str, str, str],
         renter_token: str,
     ) -> None:
+        """Listing stays published when offered order is canceled (no reservation)."""
         listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
 
-        start = _today()
-        end = _today()
-        resp = await client.post(
-            "/api/v1/orders/",
-            json={
-                "listing_id": listing_id,
-                "requested_start_date": start.isoformat(),
-                "requested_end_date": end.isoformat(),
-            },
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+        await client.patch(
+            f"/api/v1/orders/{order['id']}/cancel",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
-        assert resp.status_code == 201
-        order_id = resp.json()["id"]
 
-        # Offer with both dates in the past so lazy eval immediately resolves to finished
-        past_start = start - timedelta(days=2)
-        past_end = start - timedelta(days=1)
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+    async def test_listing_stays_published_throughout_lifecycle(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        """Listing status remains published at all order lifecycle stages."""
+        listing_id, org_id, org_token = create_listing
+        order = await _create_offered_order(client, listing_id, org_id, org_token, renter_token)
+
+        # After offer
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+        # After accept
         await client.patch(
-            f"/api/v1/organizations/{org_id}/orders/{order_id}/offer",
-            json={
-                "offered_cost": "5000.00",
-                "offered_start_date": past_start.isoformat(),
-                "offered_end_date": past_end.isoformat(),
-            },
+            f"/api/v1/orders/{order['id']}/accept",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        resp = await client.get(f"/api/v1/listings/{listing_id}")
+        assert resp.json()["status"] == "published"
+
+        # After approve (confirmed)
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order['id']}/approve",
             headers={"Authorization": f"Bearer {org_token}"},
         )
-
-        await client.patch(
-            f"/api/v1/orders/{order_id}/confirm",
-            headers={"Authorization": f"Bearer {renter_token}"},
-        )
-
-        # GET triggers lazy eval: confirmed → active → finished (both dates in past)
-        resp = await client.get(
-            f"/api/v1/orders/{order_id}",
-            headers={"Authorization": f"Bearer {renter_token}"},
-        )
-        assert resp.json()["status"] == "finished"
-
-        # Listing must be published — exercises the FINISHED branch in _apply_auto_transition
         resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"

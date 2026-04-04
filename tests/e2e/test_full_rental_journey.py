@@ -9,9 +9,8 @@ Only ``datetime.now`` is mocked for auto-transition scenarios.
 
 import datetime
 import io
-from collections.abc import Generator
 from typing import Any
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 from uuid import uuid4
 
 import httpx
@@ -33,8 +32,9 @@ from app.core.enums import (
 from app.listings.models import Listing, ListingCategory
 from app.media.models import Media
 from app.media.storage import StorageClient
-from app.media.worker import process_media_job
 from app.users.models import User
+from app.worker.media import process_media_job
+from app.worker.orders import activate_order, finish_order
 
 pytestmark = pytest.mark.e2e
 
@@ -113,7 +113,7 @@ async def _create_ready_photo(
         resp.raise_for_status()
     media.status = MediaStatus.PROCESSING
     await media.save()
-    with patch("app.media.worker._get_storage", return_value=real_storage):
+    with patch("app.worker.media._get_storage", return_value=real_storage):
         await process_media_job({}, str(media.id))
     await media.refresh_from_db()
     assert media.status == MediaStatus.READY
@@ -148,17 +148,6 @@ async def real_storage() -> StorageClient:
     return storage
 
 
-@pytest.fixture
-def mock_today() -> Generator[MagicMock]:
-    """Patch ``datetime.now`` in the orders service to return a controllable datetime."""
-    real_datetime = datetime.datetime
-    with patch("app.orders.service.datetime") as mock_dt:
-        mock_dt.now.return_value = real_datetime.now(tz=datetime.UTC)
-        mock_dt.side_effect = real_datetime
-        mock_dt.UTC = datetime.UTC
-        yield mock_dt
-
-
 # ---------------------------------------------------------------------------
 # The mega test
 # ---------------------------------------------------------------------------
@@ -167,7 +156,6 @@ def mock_today() -> Generator[MagicMock]:
 async def test_full_rental_journey(
     client: httpx.AsyncClient,
     real_storage: StorageClient,
-    mock_today: MagicMock,
 ) -> None:
     """Walk through the ENTIRE platform lifecycle in 21 steps.
 
@@ -184,13 +172,13 @@ async def test_full_rental_journey(
     11. Renter browses public catalog, finds listing, views detail
     12. Renter places an order (verify estimated cost)
     13. Editor offers adjusted terms
-    14. Renter confirms the offer
-    15. Mock date to start -> order active, listing in_rent
-    16. Verify listing shows in_rent
+    14. Renter accepts the offer, org approves -> confirmed
+    15. Mock date to start -> order active
+    16. Verify listing is still published (no in_rent status)
     17. Mock date past end -> order finished, listing published
     18. Renter places second order
-    19. Org editor rejects second order
-    20. Renter places third order, org offers, renter declines
+    19. Org editor cancels second order
+    20. Renter places third order, org offers, renter cancels
     21. Verify final state
     """
     uploaded_media: list[Media] = []
@@ -448,41 +436,41 @@ async def test_full_rental_journey(
         assert offer_resp.json()["offered_cost"] == "4500.00"
 
         # ==================================================================
-        # Step 14: Renter confirms the offer
+        # Step 14: Renter accepts the offer, org approves -> confirmed
         # ==================================================================
-        confirm_resp = await client.patch(
-            f"/api/v1/orders/{order1_id}/confirm",
+        accept_resp = await client.patch(
+            f"/api/v1/orders/{order1_id}/accept",
             headers=_auth(renter_token),
         )
-        assert confirm_resp.status_code == 200
-        assert confirm_resp.json()["status"] == OrderStatus.CONFIRMED
+        assert accept_resp.status_code == 200
+        assert accept_resp.json()["status"] == OrderStatus.ACCEPTED
+
+        approve_resp = await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order1_id}/approve",
+            headers=_auth(editor_token),
+        )
+        assert approve_resp.status_code == 200
+        assert approve_resp.json()["status"] == OrderStatus.CONFIRMED
 
         # ==================================================================
-        # Step 15: Mock date to start -> order active, listing in_rent
+        # Step 15: Trigger activate worker job -> order active
         # ==================================================================
-        start_date = datetime.date.fromisoformat(start_str)
-        mock_today.now.return_value = datetime.datetime(
-            start_date.year, start_date.month, start_date.day, tzinfo=datetime.UTC
-        )
+        await activate_order({}, order1_id)
 
         get_order_resp = await client.get(f"/api/v1/orders/{order1_id}", headers=_auth(renter_token))
         assert get_order_resp.status_code == 200
         assert get_order_resp.json()["status"] == OrderStatus.ACTIVE
 
         # ==================================================================
-        # Step 16: Verify listing shows in_rent
+        # Step 16: Verify listing is still published (no in_rent status)
         # ==================================================================
         listing_obj = await Listing.get(id=listing_id)
-        assert listing_obj.status == ListingStatus.IN_RENT
+        assert listing_obj.status == ListingStatus.PUBLISHED
 
         # ==================================================================
-        # Step 17: Mock date past end -> order finished, listing published
+        # Step 17: Trigger finish worker job -> order finished, listing published
         # ==================================================================
-        end_date = datetime.date.fromisoformat(end_str)
-        past_end = end_date + datetime.timedelta(days=1)
-        mock_today.now.return_value = datetime.datetime(
-            past_end.year, past_end.month, past_end.day, tzinfo=datetime.UTC
-        )
+        await finish_order({}, order1_id)
 
         get_finished_resp = await client.get(f"/api/v1/orders/{order1_id}", headers=_auth(renter_token))
         assert get_finished_resp.status_code == 200
@@ -494,8 +482,6 @@ async def test_full_rental_journey(
         # ==================================================================
         # Step 18: Renter places second order (listing is published again)
         # ==================================================================
-        # Reset mock to real time so dates validate properly
-        mock_today.now.return_value = datetime.datetime.now(tz=datetime.UTC)
 
         start2_str, end2_str = _future_dates(days_ahead=20, duration=3)
 
@@ -514,14 +500,14 @@ async def test_full_rental_journey(
         assert order2["status"] == OrderStatus.PENDING
 
         # ==================================================================
-        # Step 19: Org editor rejects second order
+        # Step 19: Org editor cancels second order
         # ==================================================================
         reject_resp = await client.patch(
-            f"/api/v1/organizations/{org_id}/orders/{order2_id}/reject",
+            f"/api/v1/organizations/{org_id}/orders/{order2_id}/cancel",
             headers=_auth(editor_token),
         )
         assert reject_resp.status_code == 200
-        assert reject_resp.json()["status"] == OrderStatus.REJECTED
+        assert reject_resp.json()["status"] == OrderStatus.CANCELED_BY_ORGANIZATION
 
         # ==================================================================
         # Step 20: Renter places third order, org offers, renter declines
@@ -555,13 +541,13 @@ async def test_full_rental_journey(
         assert offer3_resp.status_code == 200
         assert offer3_resp.json()["status"] == OrderStatus.OFFERED
 
-        # Renter declines
+        # Renter cancels
         decline_resp = await client.patch(
-            f"/api/v1/orders/{order3_id}/decline",
+            f"/api/v1/orders/{order3_id}/cancel",
             headers=_auth(renter_token),
         )
         assert decline_resp.status_code == 200
-        assert decline_resp.json()["status"] == OrderStatus.DECLINED
+        assert decline_resp.json()["status"] == OrderStatus.CANCELED_BY_USER
 
         # ==================================================================
         # Step 21: Verify final state
@@ -575,8 +561,8 @@ async def test_full_rental_journey(
 
         order_statuses = {o["id"]: o["status"] for o in my_orders}
         assert order_statuses[order1_id] == OrderStatus.FINISHED
-        assert order_statuses[order2_id] == OrderStatus.REJECTED
-        assert order_statuses[order3_id] == OrderStatus.DECLINED
+        assert order_statuses[order2_id] == OrderStatus.CANCELED_BY_ORGANIZATION
+        assert order_statuses[order3_id] == OrderStatus.CANCELED_BY_USER
 
         # Listing is published (available for new orders)
         final_listing = await Listing.get(id=listing_id)

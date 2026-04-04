@@ -93,7 +93,7 @@ services:
       - db
       - minio
       - redis
-    command: python -m app.media.worker
+    command: python -m app.worker
 
 volumes:
   pgdata:

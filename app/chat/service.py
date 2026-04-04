@@ -17,10 +17,9 @@ from app.users.models import User
 _TERMINAL_STATUSES = frozenset(
     {
         OrderStatus.FINISHED,
-        OrderStatus.REJECTED,
-        OrderStatus.DECLINED,
         OrderStatus.CANCELED_BY_USER,
         OrderStatus.CANCELED_BY_ORGANIZATION,
+        OrderStatus.EXPIRED,
     }
 )
 

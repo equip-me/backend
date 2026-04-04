@@ -60,4 +60,4 @@ def mock_arq_pool(monkeypatch: pytest.MonkeyPatch) -> None:
     async def _mock_get_pool() -> AsyncMock:
         return mock_pool
 
-    monkeypatch.setattr("app.media.worker.get_arq_pool", _mock_get_pool)
+    monkeypatch.setattr("app.worker.settings.get_arq_pool", _mock_get_pool)
