@@ -18,12 +18,12 @@ tasks:
   infra:up:
     internal: true
     cmds:
-      - docker compose -p rental-dev -f docker-compose.dev.yml up -d
+      - docker compose -p rental-dev -f docker-compose.yml up -d
 
   infra:down:
     desc: Stop dev infrastructure
     cmds:
-      - docker compose -p rental-dev -f docker-compose.dev.yml down
+      - docker compose -p rental-dev -f docker-compose.yml down
 
   test:infra:
     internal: true
