@@ -40,4 +40,7 @@ async def subscribe(channel: str) -> PubSub:
     redis = get_redis()
     pubsub = redis.pubsub()
     await pubsub.subscribe(channel)
+    # Drain the subscribe-confirmation so the subscription is guaranteed
+    # active on the Redis server before we return.
+    await pubsub.get_message(timeout=5.0)
     return pubsub

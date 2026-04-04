@@ -24,6 +24,16 @@ async def make_ws_client() -> AsyncGenerator[AsyncClient]:
             yield ac
 
 
+_WS_TIMEOUT: float = 5.0
+
+
+async def ws_receive(ws: AsyncWebSocketSession) -> dict[str, Any]:
+    """Receive JSON from WebSocket with a timeout to prevent infinite hangs in CI."""
+    async with asyncio.timeout(_WS_TIMEOUT):
+        result: dict[str, Any] = await ws.receive_json()
+    return result
+
+
 class TestChatRESTEndpoints:
     async def test_get_messages_empty(
         self,
@@ -163,7 +173,7 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                data = await ws.receive_json()
+                data = await ws_receive(ws)
                 assert data["type"] == "connected"
                 assert data["data"]["chat_status"] == "active"
 
@@ -181,7 +191,7 @@ class TestChatWebSocket:
                     f"/api/v1/orders/{order_id}/chat/ws?token=invalid",
                     wsc,
                 ) as ws:
-                    await ws.receive_json()
+                    await ws_receive(ws)
             assert exc_info.value.code == 4001
 
     async def test_ws_connect_not_participant(
@@ -200,7 +210,7 @@ class TestChatWebSocket:
                     f"/api/v1/orders/{order_id}/chat/ws?token={outsider_token}",
                     wsc,
                 ) as ws2:
-                    await ws2.receive_json()
+                    await ws_receive(ws2)
             assert exc_info.value.code == 4003
 
     async def test_ws_send_and_receive_message(
@@ -218,9 +228,9 @@ class TestChatWebSocket:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
-                    await ws.receive_json()  # connected
+                    await ws_receive(ws)  # connected
                     await ws.send_json({"type": "message", "text": "Hello org!"})
-                    msg = await ws.receive_json()
+                    msg = await ws_receive(ws)
                     renter_q.put_nowait(msg)
                     sent.set()
 
@@ -228,9 +238,9 @@ class TestChatWebSocket:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc) as ws:
-                    await ws.receive_json()  # connected
+                    await ws_receive(ws)  # connected
                     await sent.wait()
-                    msg = await ws.receive_json()
+                    msg = await ws_receive(ws)
                     org_q.put_nowait(msg)
 
         await asyncio.gather(renter_session(), org_session())
@@ -260,22 +270,22 @@ class TestChatWebSocket:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
-                    await ws.receive_json()  # connected
+                    await ws_receive(ws)  # connected
                     await ws.send_json({"type": "message", "text": "Read this"})
-                    msg = await ws.receive_json()  # own echo
+                    msg = await ws_receive(ws)  # own echo
                     org_q.put_nowait(msg["data"]["id"])
                     sent_event.set()
                     await read_event.wait()
-                    receipt = await ws.receive_json()
+                    receipt = await ws_receive(ws)
                     renter_q.put_nowait(receipt)
 
         async def org_session() -> None:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc) as ws:
-                    await ws.receive_json()  # connected
+                    await ws_receive(ws)  # connected
                     await sent_event.wait()
-                    await ws.receive_json()  # drain the broadcast message
+                    await ws_receive(ws)  # drain the broadcast message
                     msg_id = org_q.get_nowait()
                     await ws.send_json({"type": "read", "until_message_id": msg_id})
                     read_event.set()
@@ -316,11 +326,11 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                connected = await ws.receive_json()
+                connected = await ws_receive(ws)
                 assert connected["data"]["chat_status"] == "read_only"
 
                 await ws.send_json({"type": "message", "text": "Too late"})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "read_only"
 
@@ -337,9 +347,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Persisted!"})
-                await ws.receive_json()
+                await ws_receive(ws)
 
         resp = await client.get(
             f"/api/v1/orders/{order_id}/chat/messages",
@@ -364,11 +374,11 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Msg 1"})
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Msg 2"})
-                await ws.receive_json()
+                await ws_receive(ws)
 
         resp = await client.get(
             f"/api/v1/organizations/{org_id}/orders/{order_id}/chat/status",
@@ -396,9 +406,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message"})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
 
@@ -414,9 +424,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Hi"})
-                msg = await ws.receive_json()
+                msg = await ws_receive(ws)
                 assert msg["data"]["side"] == "requester"
                 assert msg["data"]["name"] == "Renter Testov"
 
@@ -426,9 +436,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={org_token}",
                 wsc,
             ) as ws2:
-                await ws2.receive_json()
+                await ws_receive(ws2)
                 await ws2.send_json({"type": "message", "text": "Reply"})
-                msg = await ws2.receive_json()
+                msg = await ws_receive(ws2)
                 assert msg["data"]["side"] == "organization"
                 assert len(msg["data"]["name"]) > 0
 
@@ -447,7 +457,7 @@ class TestChatWebSocket:
                     f"/api/v1/orders/{order_id}/chat/ws",
                     wsc,
                 ) as ws:
-                    await ws.receive_json()
+                    await ws_receive(ws)
             assert exc_info.value.code == 4001
 
     async def test_ws_connect_suspended_user(
@@ -472,7 +482,7 @@ class TestChatWebSocket:
                     f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                     wsc,
                 ) as ws2:
-                    await ws2.receive_json()
+                    await ws_receive(ws2)
             assert exc_info.value.code == 4001
 
     async def test_ws_connect_order_not_found(
@@ -490,7 +500,7 @@ class TestChatWebSocket:
                     f"/api/v1/orders/ZZZZZZ/chat/ws?token={renter_token}",
                     wsc,
                 ) as ws3:
-                    await ws3.receive_json()
+                    await ws_receive(ws3)
             assert exc_info.value.code == 4004
 
     async def test_ws_invalid_json(
@@ -505,9 +515,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 await ws.send_text("not valid json{{{")
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "invalid_json"
 
@@ -523,14 +533,14 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 # Send messages up to the limit (default 30/min)
                 for i in range(30):
                     await ws.send_json({"type": "message", "text": f"Msg {i}"})
-                    await ws.receive_json()  # echo
+                    await ws_receive(ws)  # echo
                 # Next message should be rate limited
                 await ws.send_json({"type": "message", "text": "Over limit"})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "rate_limited"
 
@@ -542,26 +552,25 @@ class TestChatWebSocket:
         order_id, _org_id, org_token, renter_token = create_order_for_chat
 
         org_q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
-        typing_sent = asyncio.Event()
+        org_received = asyncio.Event()
 
         async def renter_session() -> None:
             async with make_ws_client() as wsc:
                 ws: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
-                    await ws.receive_json()  # connected
+                    await ws_receive(ws)  # connected
                     await ws.send_json({"type": "typing", "is_typing": True})
-                    typing_sent.set()
-                    # Give time for broadcast
-                    await asyncio.sleep(0.5)
+                    async with asyncio.timeout(_WS_TIMEOUT):
+                        await org_received.wait()
 
         async def org_session() -> None:
             async with make_ws_client() as wsc:
                 ws2: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc) as ws2:
-                    await ws2.receive_json()  # connected
-                    await typing_sent.wait()
-                    msg = await ws2.receive_json()
+                    await ws_receive(ws2)  # connected
+                    msg = await ws_receive(ws2)
                     org_q.put_nowait(msg)
+                    org_received.set()
 
         await asyncio.gather(renter_session(), org_session())
 
@@ -582,10 +591,10 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 long_text = "x" * 4001
                 await ws.send_json({"type": "message", "text": long_text})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
 
@@ -601,9 +610,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 await ws.send_json({"type": "message", "text": "Hi", "media_ids": ["not-a-uuid"]})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
 
@@ -621,10 +630,10 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 fake_id = str(uuid.uuid4())
                 await ws.send_json({"type": "message", "text": "Hi", "media_ids": [fake_id]})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
 
@@ -640,11 +649,11 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 await ws.send_json({"type": "read"})
                 # Send a valid message to verify connection is still alive
                 await ws.send_json({"type": "message", "text": "Still alive"})
-                msg = await ws.receive_json()
+                msg = await ws_receive(ws)
                 assert msg["type"] == "message"
 
     async def test_ws_read_nonexistent_message(
@@ -661,11 +670,11 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 await ws.send_json({"type": "read", "until_message_id": str(uuid.uuid4())})
                 # Should not crash — send another message to verify
                 await ws.send_json({"type": "message", "text": "Still works"})
-                msg = await ws.receive_json()
+                msg = await ws_receive(ws)
                 assert msg["type"] == "message"
 
     async def test_message_with_media_attachment(
@@ -707,9 +716,9 @@ class TestChatWebSocket:
                 f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}",
                 wsc,
             ) as ws:
-                await ws.receive_json()  # connected
+                await ws_receive(ws)  # connected
                 await ws.send_json({"type": "message", "text": "See photo", "media_ids": [str(media_id)]})
-                msg = await ws.receive_json()
+                msg = await ws_receive(ws)
                 assert msg["type"] == "message"
                 assert msg["data"]["text"] == "See photo"
                 assert len(msg["data"]["media"]) == 1
@@ -767,9 +776,9 @@ class TestChatWebSocket:
         async with make_ws_client() as wsc:
             ws: AsyncWebSocketSession
             async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Photo", "media_ids": [str(media_id)]})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
 
@@ -807,9 +816,9 @@ class TestChatWebSocket:
         async with make_ws_client() as wsc:
             ws: AsyncWebSocketSession
             async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Stolen", "media_ids": [str(media_id)]})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
 
@@ -825,8 +834,8 @@ class TestChatWebSocket:
         async with make_ws_client() as wsc:
             ws: AsyncWebSocketSession
             async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
-                await ws.receive_json()
+                await ws_receive(ws)
                 await ws.send_json({"type": "message", "text": "Too many", "media_ids": fake_ids})
-                error = await ws.receive_json()
+                error = await ws_receive(ws)
                 assert error["type"] == "error"
                 assert error["data"]["code"] == "validation_error"
