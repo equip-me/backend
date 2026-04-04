@@ -96,7 +96,7 @@ info "Building dist/ directory..."
 rm -rf "$DIST_DIR"
 mkdir -p "$DIST_DIR"
 
-cp "$SCRIPT_DIR/docker-compose.prod.yml" "$DIST_DIR/"
+cp "$SCRIPT_DIR/docker-compose.yml" "$DIST_DIR/"
 cp -r "$SCRIPT_DIR/config" "$DIST_DIR/"
 
 cat > "$DIST_DIR/.env" <<EOF
