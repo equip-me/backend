@@ -64,7 +64,7 @@ class TestGetChatStatus:
 
     def test_terminal_no_messages_within_cooldown(self) -> None:
         result = get_chat_status(
-            order_status=OrderStatus.REJECTED,
+            order_status=OrderStatus.CANCELED_BY_ORGANIZATION,
             order_updated_at=_NOW - timedelta(days=3),
             last_message_at=None,
             cooldown_days=7,
@@ -74,7 +74,7 @@ class TestGetChatStatus:
 
     def test_terminal_no_messages_past_cooldown(self) -> None:
         result = get_chat_status(
-            order_status=OrderStatus.REJECTED,
+            order_status=OrderStatus.CANCELED_BY_ORGANIZATION,
             order_updated_at=_NOW - timedelta(days=10),
             last_message_at=None,
             cooldown_days=7,
@@ -86,10 +86,9 @@ class TestGetChatStatus:
         "status",
         [
             OrderStatus.FINISHED,
-            OrderStatus.REJECTED,
-            OrderStatus.DECLINED,
             OrderStatus.CANCELED_BY_USER,
             OrderStatus.CANCELED_BY_ORGANIZATION,
+            OrderStatus.EXPIRED,
         ],
     )
     def test_all_terminal_statuses_respect_cooldown(self, status: OrderStatus) -> None:

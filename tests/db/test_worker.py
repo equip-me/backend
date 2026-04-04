@@ -10,8 +10,8 @@ from PIL import Image
 
 from app.core.enums import MediaContext, MediaKind, MediaOwnerType, MediaStatus
 from app.media.models import Media
-from app.media.worker import (
-    WorkerSettings,
+from app.users.models import User
+from app.worker.media import (
     _get_variant_specs,
     _process_document,
     _process_photo,
@@ -19,7 +19,7 @@ from app.media.worker import (
     cleanup_orphans_cron,
     process_media_job,
 )
-from app.users.models import User
+from app.worker.settings import _build_worker_settings
 
 
 def _make_jpeg(width: int = 200, height: int = 150) -> bytes:
@@ -126,7 +126,7 @@ async def test_process_media_job_photo() -> None:
     mock_storage = AsyncMock()
     mock_storage.download.return_value = _make_jpeg(400, 300)
 
-    with patch("app.media.worker._get_storage", return_value=mock_storage):
+    with patch("app.worker.media._get_storage", return_value=mock_storage):
         await process_media_job({}, str(media.id))
 
     refreshed = await Media.get(id=media.id)
@@ -152,7 +152,7 @@ async def test_process_media_job_document() -> None:
     mock_storage = AsyncMock()
     mock_storage.download.return_value = b"%PDF-1.4 fake pdf"
 
-    with patch("app.media.worker._get_storage", return_value=mock_storage):
+    with patch("app.worker.media._get_storage", return_value=mock_storage):
         await process_media_job({}, str(media.id))
 
     refreshed = await Media.get(id=media.id)
@@ -174,7 +174,7 @@ async def test_process_media_job_failure() -> None:
     mock_storage = AsyncMock()
     mock_storage.download.side_effect = RuntimeError("S3 connection failed")
 
-    with patch("app.media.worker._get_storage", return_value=mock_storage):
+    with patch("app.worker.media._get_storage", return_value=mock_storage):
         with pytest.raises(RuntimeError, match="S3 connection failed"):
             await process_media_job({}, str(media.id))
 
@@ -295,7 +295,7 @@ async def test_cleanup_orphans_cron() -> None:
 
     mock_storage = AsyncMock()
 
-    with patch("app.media.worker._get_storage", return_value=mock_storage):
+    with patch("app.worker.media._get_storage", return_value=mock_storage):
         await cleanup_orphans_cron({})
 
     assert await Media.get_or_none(id=orphan.id) is None
@@ -306,4 +306,5 @@ async def test_cleanup_orphans_cron() -> None:
 
 
 async def test_worker_settings_redis_settings() -> None:
-    assert isinstance(WorkerSettings.redis_settings, RedisSettings)
+    settings = _build_worker_settings()
+    assert isinstance(settings.redis_settings, RedisSettings)

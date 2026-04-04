@@ -23,9 +23,9 @@ from app.core.enums import (
 from app.listings.models import ListingCategory
 from app.media.models import Media
 from app.media.storage import StorageClient
-from app.media.worker import process_media_job
 from app.organizations.models import Organization
 from app.users.models import User
+from app.worker.media import process_media_job
 
 pytestmark = pytest.mark.e2e
 
@@ -172,7 +172,7 @@ async def _create_ready_photo(real_storage: StorageClient, user: User) -> Media:
         resp.raise_for_status()
     media.status = MediaStatus.PROCESSING
     await media.save()
-    with patch("app.media.worker._get_storage", return_value=real_storage):
+    with patch("app.worker.media._get_storage", return_value=real_storage):
         await process_media_job({}, str(media.id))
     await media.refresh_from_db()
     assert media.status == MediaStatus.READY

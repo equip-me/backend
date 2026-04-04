@@ -11,7 +11,8 @@ from app.observability.metrics import order_transitions, orders_created
 from app.observability.tracing import traced
 from app.orders.models import Order
 from app.orders.schemas import OrderCreate, OrderOffer, OrderRead
-from app.orders.state_machine import maybe_auto_transition, transition
+from app.orders.state_machine import transition
+from app.reservations import service as reservation_service
 from app.users.models import User
 
 
@@ -20,38 +21,36 @@ def _record_transition(order_id: str, old_status: OrderStatus, new_status: Order
     emit_event("order.status_changed", order_id=order_id, old_status=old_status.value, new_status=new_status.value)
 
 
-async def _apply_auto_transition(order: Order) -> Order:
-    # TODO: Replace with Temporal workflow for automatic order status transitions
-    new_status = maybe_auto_transition(
-        status=order.status,
-        offered_start_date=order.offered_start_date,
-        offered_end_date=order.offered_end_date,
-        today=datetime.now(UTC).date(),
-    )
-    if new_status is None:
-        return order
+async def _schedule_expire_job(order: Order, expire_date: datetime) -> None:
+    """Schedule a deferred ARQ job to expire the order at the given date."""
+    from app.worker.settings import get_arq_pool
 
-    order.status = new_status
-    await order.save()
-
-    # Note: fetch_related may issue a redundant query if listing was already prefetch_related
-    # in the list endpoints. Acceptable until Temporal replaces lazy evaluation.
-    await order.fetch_related("listing")
-    listing: Listing = order.listing
-
-    if new_status == OrderStatus.ACTIVE:
-        listing.status = ListingStatus.IN_RENT
-        await listing.save()
-    elif new_status == OrderStatus.FINISHED:
-        listing.status = ListingStatus.PUBLISHED
-        await listing.save()
-
-    return order
+    pool = await get_arq_pool()
+    await pool.enqueue_job("expire_order", order.id, _defer_until=expire_date)
 
 
-async def _to_read(order: Order) -> OrderRead:
-    order = await _apply_auto_transition(order)
-    return OrderRead.model_validate(order)
+async def _schedule_activate_job(order: Order) -> None:
+    """Schedule a deferred ARQ job to activate the order on offered_start_date."""
+    from app.worker.settings import get_arq_pool
+
+    if order.offered_start_date is None:
+        return
+    pool = await get_arq_pool()
+    activate_at = datetime.combine(order.offered_start_date, datetime.min.time(), tzinfo=UTC)
+    await pool.enqueue_job("activate_order", order.id, _defer_until=activate_at)
+
+
+async def _schedule_finish_job(order: Order) -> None:
+    """Schedule a deferred ARQ job to finish the order after offered_end_date."""
+    from app.worker.settings import get_arq_pool
+
+    if order.offered_end_date is None:
+        return
+    pool = await get_arq_pool()
+    from datetime import timedelta
+
+    finish_at = datetime.combine(order.offered_end_date + timedelta(days=1), datetime.min.time(), tzinfo=UTC)
+    await pool.enqueue_job("finish_order", order.id, _defer_until=finish_at)
 
 
 @traced
@@ -84,6 +83,10 @@ async def create_order(user: User, data: OrderCreate) -> OrderRead:
     )
     orders_created.add(1, {"org_id": listing.organization.id, "listing_id": data.listing_id})
     emit_event("order.created", order_id=order.id, listing_id=data.listing_id, user_id=user.id)
+
+    expire_at = datetime.combine(data.requested_start_date, datetime.min.time(), tzinfo=UTC)
+    await _schedule_expire_job(order, expire_at)
+
     return OrderRead.model_validate(order)
 
 
@@ -97,37 +100,43 @@ async def offer_order(order: Order, data: OrderOffer) -> OrderRead:
     order.offered_end_date = data.offered_end_date
     await order.save()
     _record_transition(order.id, old_status, new_status)
-    # _to_read is safe here: OFFERED status won't trigger auto-transition
-    return await _to_read(order)
+
+    expire_at = datetime.combine(data.offered_start_date, datetime.min.time(), tzinfo=UTC)
+    await _schedule_expire_job(order, expire_at)
+
+    return OrderRead.model_validate(order)
 
 
 @traced
-async def reject_order(order: Order) -> OrderRead:
+async def accept_order(order: Order) -> OrderRead:
     old_status = order.status
-    order.status = transition(order.status, OrderAction.REJECT_BY_ORG)
+    order.status = transition(order.status, OrderAction.ACCEPT_BY_USER)
     await order.save()
     _record_transition(order.id, old_status, order.status)
-    # _to_read is safe here: REJECTED is terminal, auto-transition won't fire
-    return await _to_read(order)
+    return OrderRead.model_validate(order)
 
 
 @traced
-async def confirm_order(order: Order) -> OrderRead:
+async def approve_order(order: Order) -> OrderRead:
     old_status = order.status
-    order.status = transition(order.status, OrderAction.CONFIRM_BY_USER)
+    order.status = transition(order.status, OrderAction.APPROVE_BY_ORG)
+
+    if order.offered_start_date is None or order.offered_end_date is None:
+        raise AppValidationError("Cannot approve order without offered dates")
+
+    await reservation_service.create_reservation(
+        listing_id=order.listing_id,
+        order_id=order.id,
+        start_date=order.offered_start_date,
+        end_date=order.offered_end_date,
+    )
+
     await order.save()
     _record_transition(order.id, old_status, order.status)
-    return await _to_read(order)
 
+    await _schedule_activate_job(order)
 
-@traced
-async def decline_order(order: Order) -> OrderRead:
-    old_status = order.status
-    order.status = transition(order.status, OrderAction.DECLINE_BY_USER)
-    await order.save()
-    _record_transition(order.id, old_status, order.status)
-    # _to_read is safe here: DECLINED is terminal, auto-transition won't fire
-    return await _to_read(order)
+    return OrderRead.model_validate(order)
 
 
 async def _cancel_order(order: Order, action: OrderAction) -> OrderRead:
@@ -135,11 +144,8 @@ async def _cancel_order(order: Order, action: OrderAction) -> OrderRead:
     order.status = transition(order.status, action)
     await order.save()
 
-    await order.fetch_related("listing")
-    listing: Listing = order.listing
-    if listing.status == ListingStatus.IN_RENT:
-        listing.status = ListingStatus.PUBLISHED
-        await listing.save()
+    if old_status in (OrderStatus.CONFIRMED, OrderStatus.ACTIVE):
+        await reservation_service.delete_reservation_by_order(order.id)
 
     _record_transition(order.id, old_status, order.status)
     return OrderRead.model_validate(order)
@@ -157,7 +163,7 @@ async def cancel_order_by_org(order: Order) -> OrderRead:
 
 @traced
 async def get_order(order: Order) -> OrderRead:
-    return await _to_read(order)
+    return OrderRead.model_validate(order)
 
 
 @traced
@@ -166,11 +172,11 @@ async def list_user_orders(
     params: CursorParams,
     status: OrderStatus | None = None,
 ) -> PaginatedResponse[OrderRead]:
-    qs = Order.filter(requester=user).prefetch_related("listing")
+    qs = Order.filter(requester=user)
     if status:
         qs = qs.filter(status=status)
     items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
-    order_reads = [await _to_read(order) for order in items]
+    order_reads = [OrderRead.model_validate(order) for order in items]
     return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)
 
 
@@ -180,9 +186,9 @@ async def list_org_orders(
     params: CursorParams,
     status: OrderStatus | None = None,
 ) -> PaginatedResponse[OrderRead]:
-    qs = Order.filter(organization_id=org_id).prefetch_related("listing")
+    qs = Order.filter(organization_id=org_id)
     if status:
         qs = qs.filter(status=status)
     items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
-    order_reads = [await _to_read(order) for order in items]
+    order_reads = [OrderRead.model_validate(order) for order in items]
     return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)

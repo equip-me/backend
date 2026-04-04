@@ -94,7 +94,7 @@ async def confirm_upload(
     media.status = MediaStatus.PROCESSING
     await media.save()
 
-    from app.media.worker import get_arq_pool
+    from app.worker.settings import get_arq_pool
 
     pool = await get_arq_pool()
     await pool.enqueue_job("process_media_job", str(media.id))
@@ -150,7 +150,7 @@ async def retry_media(media: Media) -> Media:
     media.status = MediaStatus.PROCESSING
     await media.save()
 
-    from app.media.worker import get_arq_pool
+    from app.worker.settings import get_arq_pool
 
     pool = await get_arq_pool()
     await pool.enqueue_job("process_media_job", str(media.id))

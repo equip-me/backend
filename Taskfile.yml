@@ -12,7 +12,7 @@ tasks:
     desc: Start dev server + media worker (Ctrl+C stops both)
     deps: [infra:up]
     cmds:
-      - bash -c 'poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 & p1=$!; poetry run python -m app.media.worker & p2=$!; trap "kill $p1 $p2 2>/dev/null" INT TERM; wait; wait'
+      - bash -c 'poetry run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000 & p1=$!; poetry run python -m app.worker & p2=$!; trap "kill $p1 $p2 2>/dev/null" INT TERM; wait; wait'
 
   # ── Infrastructure (internal start, public stop) ──────
   infra:up:
