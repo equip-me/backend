@@ -90,6 +90,35 @@ Releases are cut via GitHub Actions workflows triggered manually:
 
 Images are published to `ghcr.io/khamitovdr/rental-platform` and tagged with the version number. The latest minor release also gets the `latest` tag.
 
+## Production Deployment
+
+Deploy the full stack to a single VM with automatic TLS via Let's Encrypt.
+
+### Prerequisites
+
+- A VM with Docker Compose installed (Ubuntu/Debian)
+- A domain with DNS A records pointing to the VM for three subdomains:
+  - `api.<domain>` — API server
+  - `grafana.<domain>` — Observability dashboards
+  - `s3.<domain>` — Object storage (presigned URLs)
+- SSH access to the VM from your machine
+
+### First-time setup
+
+```bash
+task prod:setup
+```
+
+The script prompts for your domain, VM address, and secrets (auto-generates passwords by default). It builds a `dist/` directory, copies it to the VM, and starts all services.
+
+### Deploying a new version
+
+```bash
+task prod:deploy -- 0.5.0
+```
+
+Updates the app version, pulls the new image on the VM, and restarts only the app and worker containers. Infrastructure stays up.
+
 ## Links
 
 - [Business Logic Spec](docs/business-logic.md) — full domain model, order state machine, permissions, and validation rules
