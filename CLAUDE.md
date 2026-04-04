@@ -19,6 +19,7 @@ app/                 # Application code
   main.py            # FastAPI app entrypoint (app.main:app)
 tests/               # Tests (unit, db, integration)
 docs/                # Specs: technical-spec.md, business-logic.md
+deploy/              # Production deployment: docker-compose, setup/deploy scripts
 ```
 
 ## Key Commands
@@ -33,6 +34,8 @@ docs/                # Specs: technical-spec.md, business-logic.md
 | `task db:makemigrations` | Generate migration |
 | `task db:migrate` | Apply migrations |
 | `task ci` | ruff + mypy + test |
+| `task prod:setup` | Provision fresh VM with production stack |
+| `task prod:deploy -- <version>` | Deploy new app version to production |
 
 ## Configuration
 

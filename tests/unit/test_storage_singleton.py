@@ -19,6 +19,7 @@ def test_init_storage_and_get_storage() -> None:
         storage_mod._instance = None
         client = storage_mod.init_storage(
             endpoint_url="http://localhost:9000",
+            presigned_endpoint_url="http://localhost:9000",
             access_key="test",
             secret_key="test",
             bucket="test-bucket",

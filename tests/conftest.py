@@ -44,6 +44,7 @@ async def initialize_db() -> AsyncGenerator[None]:
     settings = get_settings()
     storage = init_storage(
         endpoint_url=settings.storage.endpoint_url,
+        presigned_endpoint_url=settings.storage.presigned_endpoint_url,
         access_key=settings.storage.access_key,
         secret_key=settings.storage.secret_key,
         bucket=settings.storage.bucket,

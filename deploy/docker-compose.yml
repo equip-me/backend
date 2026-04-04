@@ -1,0 +1,209 @@
+services:
+  # ── Reverse proxy + TLS ────────────────────────────────
+  nginx-proxy:
+    image: nginxproxy/nginx-proxy:1.7
+    container_name: nginx-proxy
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - certs:/etc/nginx/certs:ro
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - /var/run/docker.sock:/tmp/docker.sock:ro
+    networks:
+      - proxy
+
+  acme-companion:
+    image: nginxproxy/acme-companion:2.5
+    restart: unless-stopped
+    volumes:
+      - certs:/etc/nginx/certs
+      - vhost:/etc/nginx/vhost.d
+      - html:/usr/share/nginx/html
+      - acme:/etc/acme.sh
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    environment:
+      NGINX_PROXY_CONTAINER: nginx-proxy
+    depends_on:
+      - nginx-proxy
+    networks:
+      - proxy
+
+  # ── Application ────────────────────────────────────────
+  app:
+    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+      DATABASE__HOST: db
+      DATABASE__NAME: ${POSTGRES_DB}
+      DATABASE__USER: ${POSTGRES_USER}
+      DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+      JWT__SECRET: ${JWT_SECRET}
+      DADATA_API_KEY: ${DADATA_API_KEY:-}
+      OBSERVABILITY__OTLP_ENDPOINT: otel-collector:4317
+      STORAGE__ENDPOINT_URL: http://minio:9000
+      STORAGE__PRESIGNED_ENDPOINT_URL: ${STORAGE__PRESIGNED_ENDPOINT_URL}
+      STORAGE__ACCESS_KEY: ${MINIO_ROOT_USER}
+      STORAGE__SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      WORKER__REDIS_URL: redis://redis:6379
+      CORS__ALLOW_ORIGINS: ${CORS__ALLOW_ORIGINS}
+      VIRTUAL_HOST: ${API_HOST}
+      VIRTUAL_PORT: "8000"
+      LETSENCRYPT_HOST: ${API_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+    command: gunicorn app.main:app -w 4 -k uvicorn.workers.UvicornWorker --bind 0.0.0.0:8000
+    networks:
+      - proxy
+      - internal
+
+  worker:
+    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    restart: unless-stopped
+    environment:
+      APP_ENV: prod
+      DATABASE__HOST: db
+      DATABASE__NAME: ${POSTGRES_DB}
+      DATABASE__USER: ${POSTGRES_USER}
+      DATABASE__PASSWORD: ${POSTGRES_PASSWORD}
+      STORAGE__ENDPOINT_URL: http://minio:9000
+      STORAGE__ACCESS_KEY: ${MINIO_ROOT_USER}
+      STORAGE__SECRET_KEY: ${MINIO_ROOT_PASSWORD}
+      WORKER__REDIS_URL: redis://redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    command: python -m app.worker
+    networks:
+      - internal
+
+  # ── Data stores ────────────────────────────────────────
+  db:
+    image: postgres:17.4-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER}"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  redis:
+    image: redis:7.4-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  minio:
+    image: minio/minio:RELEASE.2025-03-12T18-04-18Z
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD}
+      VIRTUAL_HOST: ${S3_HOST}
+      VIRTUAL_PORT: "9000"
+      LETSENCRYPT_HOST: ${S3_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    volumes:
+      - minio_data:/data
+    networks:
+      - proxy
+      - internal
+
+  # ── Observability ──────────────────────────────────────
+  clickhouse:
+    image: clickhouse/clickhouse-server:25.3
+    restart: unless-stopped
+    mem_limit: 2g
+    environment:
+      CLICKHOUSE_DB: otel
+      CLICKHOUSE_USER: default
+      CLICKHOUSE_PASSWORD: clickhouse
+    volumes:
+      - clickhouse_data:/var/lib/clickhouse
+    healthcheck:
+      test: ["CMD-SHELL", "clickhouse-client --password clickhouse --query 'SELECT 1'"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    networks:
+      - internal
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:0.121.0
+    restart: unless-stopped
+    command: ["--config=/etc/otelcol-contrib/config.yaml"]
+    volumes:
+      - ./config/otel-collector.yaml:/etc/otelcol-contrib/config.yaml:ro
+    depends_on:
+      clickhouse:
+        condition: service_healthy
+    networks:
+      - internal
+
+  grafana:
+    image: grafana/grafana:11.6.0
+    restart: unless-stopped
+    environment:
+      GF_INSTALL_PLUGINS: grafana-clickhouse-datasource
+      GF_AUTH_ANONYMOUS_ENABLED: "false"
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:-admin}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD}
+      VIRTUAL_HOST: ${GRAFANA_HOST}
+      VIRTUAL_PORT: "3000"
+      LETSENCRYPT_HOST: ${GRAFANA_HOST}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    volumes:
+      - ./config/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./config/grafana/dashboards:/var/lib/grafana/dashboards:ro
+      - grafana_data:/var/lib/grafana
+    depends_on:
+      - clickhouse
+    networks:
+      - proxy
+      - internal
+
+volumes:
+  pgdata:
+  redis_data:
+  minio_data:
+  clickhouse_data:
+  grafana_data:
+  certs:
+  vhost:
+  html:
+  acme:
+
+networks:
+  proxy:
+  internal:

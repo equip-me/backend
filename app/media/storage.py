@@ -12,11 +12,13 @@ class StorageClient:
     def __init__(
         self,
         endpoint_url: str,
+        presigned_endpoint_url: str,
         access_key: str,
         secret_key: str,
         bucket: str,
     ) -> None:
         self._endpoint_url = endpoint_url
+        self._presigned_endpoint_url = presigned_endpoint_url or endpoint_url
         self._bucket = bucket
         self._session = aioboto3.Session(
             aws_access_key_id=access_key,
@@ -51,7 +53,7 @@ class StorageClient:
                 Params={"Bucket": self._bucket, "Key": key, "ContentType": content_type},
                 ExpiresIn=expires,
             )
-            return url
+            return url.replace(self._endpoint_url, self._presigned_endpoint_url, 1)
 
     async def generate_download_url(self, key: str, expires: int) -> str:
         async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
@@ -60,7 +62,7 @@ class StorageClient:
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=expires,
             )
-            return url
+            return url.replace(self._endpoint_url, self._presigned_endpoint_url, 1)
 
     async def download(self, key: str) -> bytes:
         async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
@@ -102,6 +104,7 @@ _instance: StorageClient | None = None
 
 def init_storage(
     endpoint_url: str,
+    presigned_endpoint_url: str,
     access_key: str,
     secret_key: str,
     bucket: str,
@@ -109,6 +112,7 @@ def init_storage(
     global _instance  # noqa: PLW0603
     _instance = StorageClient(
         endpoint_url=endpoint_url,
+        presigned_endpoint_url=presigned_endpoint_url,
         access_key=access_key,
         secret_key=secret_key,
         bucket=bucket,
