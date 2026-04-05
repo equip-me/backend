@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "rental-platform"
-version = "0.5.0"
+version = "0.6.0"
 description = "B2B/B2C marketplace for renting equipment"
 authors = []
 readme = "README.md"
