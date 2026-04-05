@@ -74,7 +74,7 @@ async def _handle_app_error(request: Request, exc: Exception) -> JSONResponse:
 
 def create_app() -> FastAPI:
     application = FastAPI(
-        title="Equipment Sharing Backend",
+        title="Equipment Sharing API",
         version=version("rental-platform"),
         lifespan=lifespan,
     )
