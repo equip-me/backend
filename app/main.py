@@ -1,7 +1,7 @@
 import logging
+import os
 from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
-from importlib.metadata import version
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -75,7 +75,7 @@ async def _handle_app_error(request: Request, exc: Exception) -> JSONResponse:
 def create_app() -> FastAPI:
     application = FastAPI(
         title="Equipment Sharing Backend",
-        version=version("rental-platform"),
+        version=os.getenv("APP_VERSION", "dev"),
         lifespan=lifespan,
     )
 
