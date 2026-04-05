@@ -154,6 +154,20 @@ async def list_public_organizations(
 
 
 @traced
+async def list_all_organizations(
+    params: CursorParams,
+    search: str | None = None,
+    status: OrganizationStatus | None = None,
+) -> tuple[list[Organization], str | None, bool]:
+    qs = Organization.all()
+    if search:
+        qs = qs.filter(Q(short_name__icontains=search) | Q(full_name__icontains=search))
+    if status:
+        qs = qs.filter(status=status)
+    return await paginate(qs, params, ordering=("-created_at", "-id"))
+
+
+@traced
 async def replace_contacts(org_id: str, data: ContactsReplace) -> list[ContactRead]:
     async with in_transaction():
         await OrganizationContact.filter(organization_id=org_id).delete()

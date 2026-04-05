@@ -3,12 +3,15 @@ from typing import Any
 import pytest
 from httpx import AsyncClient
 
-from app.core.enums import UserRole
+from app.core.enums import OrganizationStatus, UserRole
+from app.listings.models import ListingCategory
+from app.organizations.models import Organization
 from app.users.models import User
 
 pytestmark = pytest.mark.anyio
 
 URL = "/api/v1/private/users/"
+ORG_URL = "/api/v1/private/organizations/"
 
 
 class TestListUsers:
@@ -107,3 +110,142 @@ class TestListUsers:
         page1_ids = {item["id"] for item in body["items"]}
         page2_ids = {item["id"] for item in body2["items"]}
         assert page1_ids.isdisjoint(page2_ids)
+
+
+class TestListAllOrganizations:
+    async def test_admin_lists_all_orgs(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_organization: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        org_data, org_token = await create_organization()
+        org_id = org_data["id"]
+        # One stays CREATED, make another VERIFIED
+        await create_organization(token=org_token, inn="7736207543")
+        await Organization.filter(id=org_id).update(status=OrganizationStatus.VERIFIED)
+
+        resp = await client.get(ORG_URL, headers={"Authorization": f"Bearer {admin_token}"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert "items" in body
+        assert "has_more" in body
+        assert "next_cursor" in body
+        assert len(body["items"]) == 2
+        statuses = {item["status"] for item in body["items"]}
+        assert statuses == {"created", "verified"}
+
+    async def test_requires_admin(self, client: AsyncClient, create_user: Any) -> None:
+        _, regular_token = await create_user(email="regular@example.com")
+
+        resp = await client.get(ORG_URL, headers={"Authorization": f"Bearer {regular_token}"})
+
+        assert resp.status_code == 403
+
+    async def test_status_filter(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_organization: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        org_data, org_token = await create_organization()
+        org_id = org_data["id"]
+        await Organization.filter(id=org_id).update(status=OrganizationStatus.VERIFIED)
+        await create_organization(token=org_token, inn="7736207543")  # stays CREATED
+
+        resp_created = await client.get(
+            ORG_URL, params={"status": "created"}, headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert resp_created.status_code == 200
+        assert all(item["status"] == "created" for item in resp_created.json()["items"])
+
+        resp_verified = await client.get(
+            ORG_URL, params={"status": "verified"}, headers={"Authorization": f"Bearer {admin_token}"}
+        )
+        assert resp_verified.status_code == 200
+        assert all(item["status"] == "verified" for item in resp_verified.json()["items"])
+
+    async def test_search(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_organization: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        await create_organization()
+
+        resp = await client.get(ORG_URL, params={"search": "Рога"}, headers={"Authorization": f"Bearer {admin_token}"})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["items"]) == 1
+
+    async def test_pagination(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_organization: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        inns = ["7707083893", "7736207543", "5024129032", "7710140679"]
+        _, org_token = await create_organization(inn=inns[0])
+        for inn in inns[1:]:
+            await create_organization(token=org_token, inn=inn)
+
+        resp = await client.get(ORG_URL, params={"limit": 2}, headers={"Authorization": f"Bearer {admin_token}"})
+        assert resp.status_code == 200
+        body = resp.json()
+        assert len(body["items"]) == 2
+        assert body["has_more"] is True
+
+        resp2 = await client.get(
+            ORG_URL,
+            params={"limit": 2, "cursor": body["next_cursor"]},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp2.status_code == 200
+        body2 = resp2.json()
+        assert len(body2["items"]) == 2
+        assert body2["has_more"] is False
+
+        page1_ids = {item["id"] for item in body["items"]}
+        page2_ids = {item["id"] for item in body2["items"]}
+        assert page1_ids.isdisjoint(page2_ids)
+
+    async def test_published_listing_count(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        _, admin_token = admin_user
+        org_data, org_token = await create_organization()
+        org_id = org_data["id"]
+        await Organization.filter(id=org_id).update(status=OrganizationStatus.VERIFIED)
+        headers = {"Authorization": f"Bearer {org_token}"}
+
+        # Create 2 listings, publish only 1
+        for i in range(2):
+            create_resp = await client.post(
+                f"/api/v1/organizations/{org_id}/listings/",
+                json={"name": f"Item {i}", "category_id": seed_categories[0].id, "price": 100.0},
+                headers=headers,
+            )
+            assert create_resp.status_code == 201
+            if i == 0:
+                listing_id = create_resp.json()["id"]
+                await client.patch(
+                    f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
+                    json={"status": "published"},
+                    headers=headers,
+                )
+
+        resp = await client.get(ORG_URL, headers={"Authorization": f"Bearer {admin_token}"})
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        org_item = next(item for item in items if item["id"] == org_id)
+        assert org_item["published_listing_count"] == 1

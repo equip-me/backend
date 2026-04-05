@@ -225,6 +225,9 @@ async def get_listing_read(listing: Listing, storage: StorageClient) -> ListingR
 
 @traced
 async def list_org_categories(org_id: str) -> list[ListingCategoryRead]:
+    org_exists = await Organization.filter(id=org_id).exists()
+    if not org_exists:
+        raise NotFoundError("Organization not found")
     org_categories = (
         await ListingCategory.filter(listings__organization_id=org_id)
         .annotate(
@@ -236,15 +239,14 @@ async def list_org_categories(org_id: str) -> list[ListingCategoryRead]:
         .distinct()
     )
     verified_ids = {c.id for c in org_categories}
-    global_categories = (
-        await ListingCategory.filter(verified=True)
-        .exclude(id__in=verified_ids or {"__none__"})
-        .annotate(
-            listing_count=Count(
-                "listings",
-                _filter=Q(listings__organization_id=org_id),
-            ),
-        )
+    global_qs = ListingCategory.filter(verified=True)
+    if verified_ids:
+        global_qs = global_qs.exclude(id__in=verified_ids)
+    global_categories = await global_qs.annotate(
+        listing_count=Count(
+            "listings",
+            _filter=Q(listings__organization_id=org_id),
+        ),
     )
     all_categories = list(org_categories) + list(global_categories)
     all_categories.sort(key=lambda c: getattr(c, "listing_count", 0), reverse=True)
