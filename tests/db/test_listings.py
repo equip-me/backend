@@ -133,9 +133,10 @@ class TestListOrgCategories:
         # Global verified categories should also be included
         assert "Спецтехника" in names
 
-    async def test_list_org_categories_requires_membership(
+    async def test_list_org_categories_public_access(
         self,
         client: AsyncClient,
+        seed_categories: list[ListingCategory],
         create_organization: Any,
         create_user: Any,
     ) -> None:
@@ -146,7 +147,30 @@ class TestListOrgCategories:
             f"/api/v1/organizations/{org_id}/listings/categories/",
             headers={"Authorization": f"Bearer {outsider_token}"},
         )
-        assert resp.status_code == 403
+        assert resp.status_code == 200
+
+    async def test_list_org_categories_no_auth(
+        self,
+        client: AsyncClient,
+        seed_categories: list[ListingCategory],
+        create_organization: Any,
+    ) -> None:
+        org_data, _ = await create_organization()
+        org_id = org_data["id"]
+        resp = await client.get(f"/api/v1/organizations/{org_id}/listings/categories/")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert isinstance(body, list)
+        # Global verified categories should be present
+        names = [c["name"] for c in body]
+        assert "Спецтехника" in names
+
+    async def test_list_org_categories_nonexistent_org(
+        self,
+        client: AsyncClient,
+    ) -> None:
+        resp = await client.get("/api/v1/organizations/NOORG1/listings/categories/")
+        assert resp.status_code == 404
 
 
 class TestCreateListing:

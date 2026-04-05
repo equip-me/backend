@@ -24,6 +24,7 @@ from app.core.enums import (
 )
 from app.media.models import Media
 from app.media.storage import StorageClient
+from app.organizations.models import Organization
 from app.users.models import User
 from app.worker.media import process_media_job
 
@@ -948,4 +949,42 @@ async def test_non_admin_removes_another_member(client: httpx.AsyncClient) -> No
         f"/api/v1/organizations/{org['id']}/members/{membership2['id']}",
         headers=_auth(editor_token),
     )
+    assert resp.status_code == 403
+
+
+# ---------------------------------------------------------------------------
+# Admin: list all organizations
+# ---------------------------------------------------------------------------
+
+
+async def test_admin_list_all_organizations(client: httpx.AsyncClient) -> None:
+    """Admin can list all organizations including unverified ones."""
+    admin, admin_token = await _register(client, email="admin@example.com", phone="+79005550000")
+    await User.filter(id=admin["id"]).update(role=UserRole.ADMIN)
+
+    _, creator_token = await _register(client, email="creator@example.com", phone="+79005550001")
+    org1 = await _create_org(client, creator_token, inn=SBERBANK_INN)
+    # Verify org1
+    await Organization.filter(id=org1["id"]).update(status=OrganizationStatus.VERIFIED)
+
+    _, creator2_token = await _register(client, email="creator2@example.com", phone="+79005550002")
+    org2 = await _create_org(client, creator2_token, inn="7736207543")
+    # org2 stays CREATED
+
+    resp = await client.get("/api/v1/private/organizations/", headers=_auth(admin_token))
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert len(body["items"]) == 2
+    ids = {item["id"] for item in body["items"]}
+    assert org1["id"] in ids
+    assert org2["id"] in ids
+    statuses = {item["status"] for item in body["items"]}
+    assert statuses == {"created", "verified"}
+
+
+async def test_admin_list_organizations_requires_admin(client: httpx.AsyncClient) -> None:
+    """Regular user cannot access admin org list."""
+    _, user_token = await _register(client)
+
+    resp = await client.get("/api/v1/private/organizations/", headers=_auth(user_token))
     assert resp.status_code == 403

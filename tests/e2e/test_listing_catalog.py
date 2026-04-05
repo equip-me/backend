@@ -1000,3 +1000,40 @@ async def test_public_category_list_excludes_unverified(client: httpx.AsyncClien
     public_cat_ids = [c["id"] for c in public_resp.json()]
     assert global_cat.id in public_cat_ids
     assert org_cat_id not in public_cat_ids
+
+
+async def test_org_categories_public_no_auth(client: httpx.AsyncClient) -> None:
+    """Scenario 26: org categories are accessible without authentication."""
+    _, token = await _register(client)
+    org = await _create_verified_org(client, token)
+
+    await _create_global_category("Public Category")
+
+    # Create org-specific category with a listing
+    cat_resp = await client.post(
+        f"/api/v1/organizations/{org['id']}/listings/categories/",
+        json={"name": "Org Category"},
+        headers=_auth(token),
+    )
+    assert cat_resp.status_code == 201
+    cat_id = cat_resp.json()["id"]
+
+    await client.post(
+        f"/api/v1/organizations/{org['id']}/listings/",
+        json={"name": "Item", "category_id": cat_id, "price": 1000.0},
+        headers=_auth(token),
+    )
+
+    # No auth header
+    resp = await client.get(f"/api/v1/organizations/{org['id']}/listings/categories/")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    names = [c["name"] for c in body]
+    assert "Org Category" in names
+    assert "Public Category" in names
+
+
+async def test_org_categories_nonexistent_org_404(client: httpx.AsyncClient) -> None:
+    """Scenario 27: org categories for non-existent org returns 404."""
+    resp = await client.get("/api/v1/organizations/NOORG1/listings/categories/")
+    assert resp.status_code == 404

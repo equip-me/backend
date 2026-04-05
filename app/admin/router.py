@@ -3,12 +3,13 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 
 from app.core.dependencies import require_platform_admin, require_platform_owner
-from app.core.enums import MediaOwnerType, UserRole
+from app.core.enums import ListingStatus, MediaOwnerType, OrganizationStatus, UserRole
 from app.core.pagination import CursorParams, PaginatedResponse
+from app.listings.models import Listing
 from app.media import service as media_service
 from app.media.storage import StorageClient, get_storage
 from app.organizations import service as org_service
-from app.organizations.schemas import OrganizationRead
+from app.organizations.schemas import OrganizationListRead, OrganizationRead
 from app.users import service as user_service
 from app.users.models import User
 from app.users.schemas import AdminRoleUpdate, PrivilegeUpdate, UserRead
@@ -58,6 +59,41 @@ async def change_privilege(
     user_read = UserRead.model_validate(user)
     user_read.profile_photo = photo
     return user_read
+
+
+@router.get("/organizations/", response_model=PaginatedResponse[OrganizationListRead])
+async def list_all_organizations(
+    _admin: Annotated[User, Depends(require_platform_admin)],
+    storage: Annotated[StorageClient, Depends(get_storage)],
+    cursor: str | None = None,
+    limit: int = 20,
+    search: str | None = None,
+    status: OrganizationStatus | None = None,
+) -> PaginatedResponse[OrganizationListRead]:
+    """List all organizations regardless of verification status. Platform Admin only."""
+    params = CursorParams(cursor=cursor, limit=limit)
+    items, next_cursor, has_more = await org_service.list_all_organizations(params, search=search, status=status)
+
+    org_reads: list[OrganizationListRead] = []
+    for org in items:
+        published_count = await Listing.filter(
+            organization=org,
+            status=ListingStatus.PUBLISHED,
+        ).count()
+        photo = await media_service.get_profile_photo(MediaOwnerType.ORGANIZATION, org.id, storage)
+        org_reads.append(
+            OrganizationListRead(
+                id=org.id,
+                inn=org.inn,
+                short_name=org.short_name,
+                full_name=org.full_name,
+                status=org.status,
+                photo=photo,
+                published_listing_count=published_count,
+            ),
+        )
+
+    return PaginatedResponse(items=org_reads, next_cursor=next_cursor, has_more=has_more)
 
 
 @router.patch("/organizations/{org_id}/verify", response_model=OrganizationRead)
