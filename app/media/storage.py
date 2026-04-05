@@ -47,22 +47,22 @@ class StorageClient:
                 return
 
     async def generate_upload_url(self, key: str, content_type: str, expires: int) -> str:
-        async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
+        async with self._session.client("s3", endpoint_url=self._presigned_endpoint_url, config=self._config) as s3:
             url: str = await s3.generate_presigned_url(
                 "put_object",
                 Params={"Bucket": self._bucket, "Key": key, "ContentType": content_type},
                 ExpiresIn=expires,
             )
-            return url.replace(self._endpoint_url, self._presigned_endpoint_url, 1)
+            return url
 
     async def generate_download_url(self, key: str, expires: int) -> str:
-        async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
+        async with self._session.client("s3", endpoint_url=self._presigned_endpoint_url, config=self._config) as s3:
             url: str = await s3.generate_presigned_url(
                 "get_object",
                 Params={"Bucket": self._bucket, "Key": key},
                 ExpiresIn=expires,
             )
-            return url.replace(self._endpoint_url, self._presigned_endpoint_url, 1)
+            return url
 
     async def download(self, key: str) -> bytes:
         async with self._session.client("s3", endpoint_url=self._endpoint_url, config=self._config) as s3:
