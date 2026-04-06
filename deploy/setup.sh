@@ -57,8 +57,9 @@ echo ""
 info "Domain & access"
 prompt DOMAIN        "Domain name (e.g. equip-me.ru)" ""
 prompt LETSENCRYPT_EMAIL "Let's Encrypt email" ""
-prompt APP_VERSION   "App version to deploy" ""
-prompt VM_HOST       "VM address (user@host)" ""
+prompt APP_VERSION      "App version to deploy" ""
+prompt FRONTEND_VERSION "Frontend version to deploy" ""
+prompt VM_HOST          "VM address (user@host)" ""
 
 echo ""
 info "Database"
@@ -110,6 +111,7 @@ LETSENCRYPT_EMAIL=${LETSENCRYPT_EMAIL}
 
 # App
 APP_VERSION=${APP_VERSION}
+FRONTEND_VERSION=${FRONTEND_VERSION}
 
 # Database
 POSTGRES_USER=${POSTGRES_USER}
@@ -157,12 +159,13 @@ echo -e "${GREEN}═════════════════════
 echo -e "${GREEN}  Deployment complete!${NC}"
 echo -e "${GREEN}═══════════════════════════════════════════════${NC}"
 echo ""
-echo -e "  API:     ${CYAN}https://${API_HOST}${NC}"
-echo -e "  Grafana: ${CYAN}https://${GRAFANA_HOST}${NC}"
-echo -e "  S3:      ${CYAN}https://${S3_HOST}${NC}"
+echo -e "  Frontend: ${CYAN}https://${DOMAIN}${NC}"
+echo -e "  API:      ${CYAN}https://${API_HOST}${NC}"
+echo -e "  Grafana:  ${CYAN}https://${GRAFANA_HOST}${NC}"
+echo -e "  S3:       ${CYAN}https://${S3_HOST}${NC}"
 echo ""
 echo -e "  Grafana login: admin / ${GRAFANA_ADMIN_PASSWORD}"
 echo ""
 info "TLS certificates will be provisioned automatically by Let's Encrypt."
-info "Ensure DNS A records point to the VM for: ${API_HOST}, ${GRAFANA_HOST}, ${S3_HOST}"
+info "Ensure DNS A records point to the VM for: ${DOMAIN}, ${API_HOST}, ${GRAFANA_HOST}, ${S3_HOST}"
 echo ""
