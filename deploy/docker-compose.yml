@@ -92,6 +92,17 @@ services:
     networks:
       - internal
 
+  frontend:
+    image: ghcr.io/khamitovdr/equip-me-frontend:${FRONTEND_VERSION}
+    restart: unless-stopped
+    environment:
+      VIRTUAL_HOST: ${DOMAIN}
+      VIRTUAL_PORT: "3000"
+      LETSENCRYPT_HOST: ${DOMAIN}
+      LETSENCRYPT_EMAIL: ${LETSENCRYPT_EMAIL}
+    networks:
+      - proxy
+
   # ── Data stores ────────────────────────────────────────
   db:
     image: postgres:17.4-alpine
