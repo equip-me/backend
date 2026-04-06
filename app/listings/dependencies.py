@@ -59,7 +59,9 @@ async def resolve_public_listing(
     return listing
 
 
-async def get_category_filter(category_id: str | None = Query(None)) -> str | None:
+async def get_category_filter(
+    category_id: Annotated[list[str] | None, Query()] = None,
+) -> list[str] | None:
     return category_id
 
 

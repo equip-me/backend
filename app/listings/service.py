@@ -193,7 +193,7 @@ async def list_org_listings(
 async def list_public_listings(
     storage: StorageClient,
     params: CursorParams,
-    category_id: str | None = None,
+    category_ids: list[str] | None = None,
     organization_id: str | None = None,
     search: str | None = None,
 ) -> PaginatedResponse[ListingRead]:
@@ -201,8 +201,8 @@ async def list_public_listings(
         status=ListingStatus.PUBLISHED,
         organization__status=OrganizationStatus.VERIFIED,
     )
-    if category_id is not None:
-        qs = qs.filter(category_id=category_id)
+    if category_ids is not None:
+        qs = qs.filter(category_id__in=category_ids)
     if organization_id is not None:
         qs = qs.filter(organization_id=organization_id)
     if search:

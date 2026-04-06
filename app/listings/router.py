@@ -86,7 +86,7 @@ async def list_org_listings(
 
 @router.get("/listings/", response_model=PaginatedResponse[ListingRead])
 async def list_public_listings(
-    category_id: Annotated[str | None, Depends(get_category_filter)],
+    category_ids: Annotated[list[str] | None, Depends(get_category_filter)],
     organization_id: Annotated[str | None, Depends(get_org_filter)],
     storage: Annotated[StorageClient, Depends(get_storage)],
     cursor: str | None = None,
@@ -95,7 +95,7 @@ async def list_public_listings(
 ) -> PaginatedResponse[ListingRead]:
     """Browse published listings from verified organizations only."""
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_public_listings(storage, params, category_id, organization_id, search)
+    return await service.list_public_listings(storage, params, category_ids, organization_id, search)
 
 
 @router.get("/listings/{listing_id}", response_model=ListingRead)
