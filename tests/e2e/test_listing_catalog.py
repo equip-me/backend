@@ -659,6 +659,52 @@ async def test_public_catalog_browsing(client: httpx.AsyncClient) -> None:
     assert combined[0]["name"] == "O1-A"
 
 
+async def test_public_catalog_multi_category_filter(client: httpx.AsyncClient) -> None:
+    """Filter public listings by multiple category_id query params."""
+    _, token = await _register(client)
+    org = await _create_verified_org(client, token)
+
+    cat_a = await _create_global_category("Multi-A")
+    cat_b = await _create_global_category("Multi-B")
+    cat_c = await _create_global_category("Multi-C")
+
+    # Create one published listing per category
+    for name, cat_id in [("L-A", cat_a.id), ("L-B", cat_b.id), ("L-C", cat_c.id)]:
+        resp = await client.post(
+            f"/api/v1/organizations/{org['id']}/listings/",
+            json={"name": name, "category_id": cat_id, "price": 1000.0},
+            headers=_auth(token),
+        )
+        listing_id = resp.json()["id"]
+        await client.patch(
+            f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers=_auth(token),
+        )
+
+    # Filter by two categories (repeated query param)
+    resp = await client.get(
+        "/api/v1/listings/",
+        params=[("category_id", cat_a.id), ("category_id", cat_b.id)],
+    )
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    returned_names = {item["name"] for item in items}
+    assert returned_names == {"L-A", "L-B"}
+
+    # Single category still works
+    resp = await client.get("/api/v1/listings/", params=[("category_id", cat_c.id)])
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 1
+    assert resp.json()["items"][0]["name"] == "L-C"
+
+    # No category filter returns all
+    resp = await client.get("/api/v1/listings/")
+    assert resp.status_code == 200
+    assert len(resp.json()["items"]) == 3
+
+
 async def test_listing_detail_public_access(client: httpx.AsyncClient) -> None:
     """Scenario 13: published listing from verified org, no auth needed."""
     _, token = await _register(client)

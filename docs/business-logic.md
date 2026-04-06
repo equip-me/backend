@@ -365,7 +365,7 @@ Category model:
 
 | Viewer | What they see |
 |--------|---------------|
-| **Public (unauthenticated)** | Only listings with status `PUBLISHED` from **verified** organizations. Filterable by `category_id` and `organization_id`. |
+| **Public (unauthenticated)** | Only listings with status `PUBLISHED` from **verified** organizations. Filterable by `category_id` (one or many, repeated query param) and `organization_id`. |
 | **Organization member (any role)** | All listings belonging to their organization (any status, regardless of org verification). |
 
 Listings from unverified organizations are invisible to non-members. Direct access by a non-member returns **403**.
