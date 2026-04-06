@@ -671,6 +671,75 @@ async def test_public_catalog_browsing(client: httpx.AsyncClient) -> None:
     assert combined[0]["name"] == "O1-A"
 
 
+async def test_public_catalog_property_filters(client: httpx.AsyncClient) -> None:
+    """Filter public listings by boolean properties and price range."""
+    _, token = await _register(client)
+    org = await _create_verified_org(client, token)
+    cat = await _create_global_category("Filter Cat")
+
+    # Create 3 listings with different properties
+    listings_data = [
+        {"name": "Cheap+Delivery", "price": 500.0, "delivery": True, "with_operator": False},
+        {"name": "Mid+Operator", "price": 1500.0, "delivery": False, "with_operator": True},
+        {"name": "Expensive+Both", "price": 3000.0, "delivery": True, "with_operator": True},
+    ]
+    for data in listings_data:
+        resp = await client.post(
+            f"/api/v1/organizations/{org['id']}/listings/",
+            json={"category_id": cat.id, **data},
+            headers=_auth(token),
+        )
+        listing_id = resp.json()["id"]
+        await client.patch(
+            f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers=_auth(token),
+        )
+
+    # Filter by delivery=true
+    resp = await client.get("/api/v1/listings/?delivery=true")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert all(i["delivery"] is True for i in items)
+
+    # Filter by with_operator=true
+    resp = await client.get("/api/v1/listings/?with_operator=true")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    assert all(i["with_operator"] is True for i in items)
+
+    # Filter by delivery=false
+    resp = await client.get("/api/v1/listings/?delivery=false")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["name"] == "Mid+Operator"
+
+    # Price range: 1000-2000
+    resp = await client.get("/api/v1/listings/?price_min=1000&price_max=2000")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["name"] == "Mid+Operator"
+
+    # Price min only
+    resp = await client.get("/api/v1/listings/?price_min=1500")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 2
+    names = {i["name"] for i in items}
+    assert names == {"Mid+Operator", "Expensive+Both"}
+
+    # Combined: delivery + price range
+    resp = await client.get("/api/v1/listings/?delivery=true&price_min=1000")
+    assert resp.status_code == 200
+    items = resp.json()["items"]
+    assert len(items) == 1
+    assert items[0]["name"] == "Expensive+Both"
+
+
 async def test_public_catalog_multi_category_filter(client: httpx.AsyncClient) -> None:
     """Filter public listings by multiple category_id query params."""
     _, token = await _register(client)
