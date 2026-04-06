@@ -100,7 +100,7 @@ class TestListPublicCategories:
 
 
 class TestListOrgCategories:
-    async def test_list_org_categories_includes_global_and_org(
+    async def test_list_org_categories_only_published(
         self,
         client: AsyncClient,
         seed_categories: list[ListingCategory],
@@ -109,19 +109,38 @@ class TestListOrgCategories:
         org_data, token = await create_organization()
         org_id = org_data["id"]
         headers = {"Authorization": f"Bearer {token}"}
-        # Create org-specific category
+        # Create org-specific category with a published listing
         cat_resp = await client.post(
             f"/api/v1/organizations/{org_id}/listings/categories/",
-            json={"name": "Org Only"},
+            json={"name": "Published Cat"},
             headers=headers,
         )
-        cat_id = cat_resp.json()["id"]
-        # Create a listing in the org category so it shows up
+        pub_cat_id = cat_resp.json()["id"]
+        resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Item", "category_id": pub_cat_id, "price": 100.0},
+            headers=headers,
+        )
+        listing_id = resp.json()["id"]
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers=headers,
+        )
+
+        # Create another category with only a hidden listing (should NOT appear)
+        cat_resp2 = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/categories/",
+            json={"name": "Hidden Cat"},
+            headers=headers,
+        )
+        hidden_cat_id = cat_resp2.json()["id"]
         await client.post(
             f"/api/v1/organizations/{org_id}/listings/",
-            json={"name": "Item", "category_id": cat_id, "price": 100.0},
+            json={"name": "Hidden Item", "category_id": hidden_cat_id, "price": 50.0},
             headers=headers,
         )
+
         resp = await client.get(
             f"/api/v1/organizations/{org_id}/listings/categories/",
             headers=headers,
@@ -129,30 +148,17 @@ class TestListOrgCategories:
         assert resp.status_code == 200
         body = resp.json()
         names = [c["name"] for c in body]
-        assert "Org Only" in names
-        # Global verified categories should also be included
-        assert "Спецтехника" in names
-
-    async def test_list_org_categories_public_access(
-        self,
-        client: AsyncClient,
-        seed_categories: list[ListingCategory],
-        create_organization: Any,
-        create_user: Any,
-    ) -> None:
-        org_data, _ = await create_organization()
-        org_id = org_data["id"]
-        _, outsider_token = await create_user(email="outsider@example.com")
-        resp = await client.get(
-            f"/api/v1/organizations/{org_id}/listings/categories/",
-            headers={"Authorization": f"Bearer {outsider_token}"},
-        )
-        assert resp.status_code == 200
+        assert "Published Cat" in names
+        assert "Hidden Cat" not in names
+        # Global categories with no published listings should NOT appear
+        assert "Спецтехника" not in names
+        # Check listing count
+        pub_entry = next(c for c in body if c["name"] == "Published Cat")
+        assert pub_entry["listing_count"] == 1
 
     async def test_list_org_categories_no_auth(
         self,
         client: AsyncClient,
-        seed_categories: list[ListingCategory],
         create_organization: Any,
     ) -> None:
         org_data, _ = await create_organization()
@@ -161,9 +167,8 @@ class TestListOrgCategories:
         assert resp.status_code == 200
         body = resp.json()
         assert isinstance(body, list)
-        # Global verified categories should be present
-        names = [c["name"] for c in body]
-        assert "Спецтехника" in names
+        # No published listings, so empty
+        assert len(body) == 0
 
     async def test_list_org_categories_nonexistent_org(
         self,

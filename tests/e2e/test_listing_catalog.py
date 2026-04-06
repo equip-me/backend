@@ -485,7 +485,7 @@ async def test_create_org_specific_category(client: httpx.AsyncClient) -> None:
     assert body["verified"] is False
     assert "id" in body
 
-    # Create a listing with this category so it shows in org categories
+    # Create a published listing with this category so it shows in org categories
     cat_id = body["id"]
     listing_resp = await client.post(
         f"/api/v1/organizations/{org['id']}/listings/",
@@ -493,6 +493,12 @@ async def test_create_org_specific_category(client: httpx.AsyncClient) -> None:
         headers=_auth(token),
     )
     assert listing_resp.status_code == 201
+    listing_id = listing_resp.json()["id"]
+    await client.patch(
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
+        json={"status": "published"},
+        headers=_auth(token),
+    )
 
     # Org category list should include it
     org_cats_resp = await client.get(
@@ -572,7 +578,7 @@ async def test_org_category_list_includes_global_and_org_specific(client: httpx.
     assert org_cat_resp.status_code == 201
     org_cat_id = org_cat_resp.json()["id"]
 
-    # Create a listing with each category so they appear in org list
+    # Create a published listing with each category so they appear in org list
     for cat_id in (global_cat.id, org_cat_id):
         resp = await client.post(
             f"/api/v1/organizations/{org['id']}/listings/",
@@ -580,6 +586,12 @@ async def test_org_category_list_includes_global_and_org_specific(client: httpx.
             headers=_auth(token),
         )
         assert resp.status_code == 201, resp.text
+        listing_id = resp.json()["id"]
+        await client.patch(
+            f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers=_auth(token),
+        )
 
     org_cats_resp = await client.get(
         f"/api/v1/organizations/{org['id']}/listings/categories/",
@@ -1055,7 +1067,7 @@ async def test_org_categories_public_no_auth(client: httpx.AsyncClient) -> None:
 
     await _create_global_category("Public Category")
 
-    # Create org-specific category with a listing
+    # Create org-specific category with a published listing
     cat_resp = await client.post(
         f"/api/v1/organizations/{org['id']}/listings/categories/",
         json={"name": "Org Category"},
@@ -1064,9 +1076,15 @@ async def test_org_categories_public_no_auth(client: httpx.AsyncClient) -> None:
     assert cat_resp.status_code == 201
     cat_id = cat_resp.json()["id"]
 
-    await client.post(
+    resp = await client.post(
         f"/api/v1/organizations/{org['id']}/listings/",
         json={"name": "Item", "category_id": cat_id, "price": 1000.0},
+        headers=_auth(token),
+    )
+    listing_id = resp.json()["id"]
+    await client.patch(
+        f"/api/v1/organizations/{org['id']}/listings/{listing_id}/status",
+        json={"status": "published"},
         headers=_auth(token),
     )
 
@@ -1076,7 +1094,8 @@ async def test_org_categories_public_no_auth(client: httpx.AsyncClient) -> None:
     body = resp.json()
     names = [c["name"] for c in body]
     assert "Org Category" in names
-    assert "Public Category" in names
+    # Global category with no published listings should NOT appear
+    assert "Public Category" not in names
 
 
 async def test_org_categories_nonexistent_org_404(client: httpx.AsyncClient) -> None:
