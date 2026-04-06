@@ -5,7 +5,7 @@ from fastapi.responses import Response
 
 from app.core.pagination import CursorParams, PaginatedResponse
 from app.listings import service
-from app.listings.dependencies import get_category_filter, get_org_filter, resolve_listing, resolve_public_listing
+from app.listings.dependencies import ListingFilter, resolve_listing, resolve_public_listing
 from app.listings.models import Listing
 from app.listings.schemas import (
     ListingCreate,
@@ -86,16 +86,14 @@ async def list_org_listings(
 
 @router.get("/listings/", response_model=PaginatedResponse[ListingRead])
 async def list_public_listings(
-    category_ids: Annotated[list[str] | None, Depends(get_category_filter)],
-    organization_id: Annotated[str | None, Depends(get_org_filter)],
+    filters: Annotated[ListingFilter, Depends()],
     storage: Annotated[StorageClient, Depends(get_storage)],
     cursor: str | None = None,
     limit: int = 20,
-    search: str | None = None,
 ) -> PaginatedResponse[ListingRead]:
     """Browse published listings from verified organizations only."""
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_public_listings(storage, params, category_ids, organization_id, search)
+    return await service.list_public_listings(storage, params, filters)
 
 
 @router.get("/listings/{listing_id}", response_model=ListingRead)

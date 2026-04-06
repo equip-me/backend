@@ -59,11 +59,28 @@ async def resolve_public_listing(
     return listing
 
 
-async def get_category_filter(
-    category_id: Annotated[list[str] | None, Query()] = None,
-) -> list[str] | None:
-    return category_id
-
-
-async def get_org_filter(organization_id: str | None = Query(None)) -> str | None:
-    return organization_id
+class ListingFilter:
+    def __init__(
+        self,
+        *,
+        category_id: Annotated[list[str] | None, Query()] = None,
+        organization_id: str | None = Query(None),
+        search: str | None = Query(None),
+        price_min: float | None = Query(None, ge=0),
+        price_max: float | None = Query(None, ge=0),
+        with_operator: bool | None = Query(None),
+        on_owner_site: bool | None = Query(None),
+        delivery: bool | None = Query(None),
+        installation: bool | None = Query(None),
+        setup: bool | None = Query(None),
+    ) -> None:
+        self.category_ids = category_id
+        self.organization_id = organization_id
+        self.search = search
+        self.price_min = price_min
+        self.price_max = price_max
+        self.with_operator = with_operator
+        self.on_owner_site = on_owner_site
+        self.delivery = delivery
+        self.installation = installation
+        self.setup = setup

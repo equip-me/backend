@@ -5,6 +5,7 @@ from app.core.enums import ListingStatus, MediaOwnerType, OrganizationStatus
 from app.core.exceptions import NotFoundError
 from app.core.identifiers import create_with_short_id
 from app.core.pagination import CursorParams, PaginatedResponse, paginate
+from app.listings.dependencies import ListingFilter
 from app.listings.models import Listing, ListingCategory
 from app.listings.schemas import (
     ListingCategoryCreate,
@@ -193,20 +194,26 @@ async def list_org_listings(
 async def list_public_listings(
     storage: StorageClient,
     params: CursorParams,
-    category_ids: list[str] | None = None,
-    organization_id: str | None = None,
-    search: str | None = None,
+    filters: ListingFilter,
 ) -> PaginatedResponse[ListingRead]:
     qs = Listing.filter(
         status=ListingStatus.PUBLISHED,
         organization__status=OrganizationStatus.VERIFIED,
     )
-    if category_ids is not None:
-        qs = qs.filter(category_id__in=category_ids)
-    if organization_id is not None:
-        qs = qs.filter(organization_id=organization_id)
-    if search:
-        qs = qs.filter(name__icontains=search)
+    if filters.category_ids is not None:
+        qs = qs.filter(category_id__in=filters.category_ids)
+    if filters.organization_id is not None:
+        qs = qs.filter(organization_id=filters.organization_id)
+    if filters.search:
+        qs = qs.filter(name__icontains=filters.search)
+    if filters.price_min is not None:
+        qs = qs.filter(price__gte=filters.price_min)
+    if filters.price_max is not None:
+        qs = qs.filter(price__lte=filters.price_max)
+    for field in ("with_operator", "on_owner_site", "delivery", "installation", "setup"):
+        value = getattr(filters, field)
+        if value is not None:
+            qs = qs.filter(**{field: value})
 
     items, next_cursor, has_more = await paginate(
         qs.prefetch_related("category"),
