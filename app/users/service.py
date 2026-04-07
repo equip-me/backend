@@ -23,7 +23,7 @@ from app.users.schemas import AdminRoleUpdate, PrivilegeUpdate, TokenResponse, U
 async def register(data: UserCreate) -> TokenResponse:
     existing = await User.filter(email=data.email).exists()
     if existing:
-        raise AlreadyExistsError("User with this email already exists")
+        raise AlreadyExistsError("User with this email already exists", code="users.email_taken")
     user = await create_with_short_id(
         User,
         email=data.email,
@@ -44,14 +44,14 @@ async def authenticate(email: str, password: str) -> TokenResponse:
     if user is None:
         auth_attempts.add(1, {"result": "failed"})
         emit_event("user.auth_failed")
-        raise InvalidCredentialsError("Incorrect username or password")
+        raise InvalidCredentialsError("Incorrect username or password", code="auth.incorrect_password")
     if not verify_password(password, user.hashed_password):
         auth_attempts.add(1, {"result": "failed"})
         emit_event("user.auth_failed")
-        raise InvalidCredentialsError("Incorrect username or password")
+        raise InvalidCredentialsError("Incorrect username or password", code="auth.incorrect_password")
     if user.role == UserRole.SUSPENDED:
         auth_attempts.add(1, {"result": "suspended"})
-        raise AccountSuspendedError("Account suspended")
+        raise AccountSuspendedError("Account suspended", code="auth.account_suspended")
     token = create_access_token(user.id)
     auth_attempts.add(1, {"result": "success"})
     emit_event("user.authenticated", user_id=user.id)
@@ -62,7 +62,7 @@ async def authenticate(email: str, password: str) -> TokenResponse:
 async def get_by_id(user_id: str) -> User:
     user = await User.get_or_none(id=user_id)
     if user is None:
-        raise NotFoundError("User not found")
+        raise NotFoundError("User not found", code="users.not_found")
     return user
 
 
@@ -73,11 +73,11 @@ async def update_me(user: User, data: UserUpdate, storage: StorageClient) -> Use
     if data.email is not None and data.email != user.email:
         existing = await User.filter(email=data.email).exists()
         if existing:
-            raise AlreadyExistsError("User with this email already exists")
+            raise AlreadyExistsError("User with this email already exists", code="users.email_taken")
 
     if data.password and data.new_password:
         if not verify_password(data.password, user.hashed_password):
-            raise InvalidCredentialsError("Incorrect username or password")
+            raise InvalidCredentialsError("Incorrect username or password", code="auth.incorrect_password")
         update_data["hashed_password"] = hash_password(data.new_password)
 
     for field, value in update_data.items():

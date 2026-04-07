@@ -19,7 +19,7 @@ def get_dadata_client() -> Dadata:
 async def get_org_or_404(org_id: str = Path()) -> Organization:
     org = await Organization.get_or_none(id=org_id)
     if org is None:
-        raise NotFoundError("Organization not found")
+        raise NotFoundError("Organization not found", code="org.not_found")
     return org
 
 
@@ -33,7 +33,7 @@ async def require_org_member(
         status=MembershipStatus.MEMBER,
     )
     if membership is None:
-        raise PermissionDeniedError("Organization membership required")
+        raise PermissionDeniedError("Organization membership required", code="org.membership_required")
     return membership
 
 
@@ -48,7 +48,7 @@ async def require_org_editor(
         role__in=[MembershipRole.ADMIN, MembershipRole.EDITOR],
     )
     if membership is None:
-        raise PermissionDeniedError("Organization editor access required")
+        raise PermissionDeniedError("Organization editor access required", code="org.editor_required")
     return membership
 
 
@@ -63,5 +63,5 @@ async def require_org_admin(
         role=MembershipRole.ADMIN,
     )
     if membership is None:
-        raise PermissionDeniedError("Organization admin access required")
+        raise PermissionDeniedError("Organization admin access required", code="org.admin_required")
     return membership

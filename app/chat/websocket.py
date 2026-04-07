@@ -12,6 +12,7 @@ from app.chat import service
 from app.chat.pubsub import publish, subscribe
 from app.core.config import get_settings
 from app.core.enums import MembershipRole, MembershipStatus, UserRole
+from app.core.exceptions import AppError
 from app.core.security import decode_access_token
 from app.orders.models import Order
 from app.organizations.models import Membership
@@ -113,7 +114,7 @@ async def _listen_redis(pubsub: PubSub, ws: WebSocket, user_id: str) -> None:
 # --- Client Listener ---
 
 
-async def _listen_client(
+async def _listen_client(  # noqa: PLR0912
     ws: WebSocket,
     order: Order,
     user: User,
@@ -126,7 +127,9 @@ async def _listen_client(
         try:
             data: dict[str, Any] = json.loads(raw)
         except json.JSONDecodeError:
-            await ws.send_json({"type": "error", "data": {"code": "invalid_json", "detail": "Invalid JSON"}})
+            await ws.send_json(
+                {"type": "error", "data": {"code": "chat.invalid_json", "detail": "Invalid JSON", "params": {}}}
+            )
             continue
 
         msg_type = data.get("type")
@@ -136,15 +139,20 @@ async def _listen_client(
                 await ws.send_json(
                     {
                         "type": "error",
-                        "data": {"code": "read_only", "detail": "Chat is read-only"},
+                        "data": {"code": "chat.read_only", "detail": "Chat is read-only", "params": {}},
                     }
                 )
                 continue
             if not rate_limiter.allow():
+                settings = get_settings()
                 await ws.send_json(
                     {
                         "type": "error",
-                        "data": {"code": "rate_limited", "detail": "Too many messages, slow down"},
+                        "data": {
+                            "code": "chat.rate_limited",
+                            "detail": "Too many messages, slow down",
+                            "params": {"limit": settings.chat.rate_limit_per_minute, "window_seconds": 60},
+                        },
                     }
                 )
                 continue
@@ -155,11 +163,19 @@ async def _listen_client(
                     data.get("text"),
                     data.get("media_ids", []),
                 )
+            except AppError as exc:
+                await ws.send_json(
+                    {
+                        "type": "error",
+                        "data": {"code": exc.code, "detail": exc.detail, "params": exc.params},
+                    }
+                )
+                continue
             except Exception as exc:  # noqa: BLE001
                 await ws.send_json(
                     {
                         "type": "error",
-                        "data": {"code": "validation_error", "detail": str(exc)},
+                        "data": {"code": "chat.validation_error", "detail": str(exc), "params": {}},
                     }
                 )
                 continue

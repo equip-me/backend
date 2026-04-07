@@ -130,11 +130,19 @@ async def send_message(
     settings = get_settings()
 
     if not text and not media_ids:
-        raise AppValidationError("Message must have text or attachments")
+        raise AppValidationError("Message must have text or attachments", code="chat.message_empty")
     if text and len(text) > settings.chat.max_message_length:
-        raise AppValidationError(f"Message exceeds maximum length of {settings.chat.max_message_length}")
+        raise AppValidationError(
+            f"Message exceeds maximum length of {settings.chat.max_message_length}",
+            code="chat.message_too_long",
+            params={"max_length": settings.chat.max_message_length},
+        )
     if len(media_ids) > settings.chat.max_attachments_per_message:
-        raise AppValidationError(f"Maximum {settings.chat.max_attachments_per_message} attachments per message")
+        raise AppValidationError(
+            f"Maximum {settings.chat.max_attachments_per_message} attachments per message",
+            code="chat.too_many_attachments",
+            params={"max": settings.chat.max_attachments_per_message},
+        )
 
     # Validate and snapshot media
     media_snapshots: list[dict[str, Any]] = []
@@ -143,15 +151,31 @@ async def send_message(
         try:
             mid = UUID(mid_str)
         except ValueError as e:
-            raise AppValidationError(f"Invalid media ID: {mid_str}") from e
+            raise AppValidationError(
+                f"Invalid media ID: {mid_str}",
+                code="chat.invalid_media_id",
+                params={"id": mid_str},
+            ) from e
         media = await Media.get_or_none(id=mid).prefetch_related("uploaded_by")
         if media is None:
-            raise NotFoundError(f"Media {mid_str} not found")
+            raise NotFoundError(
+                f"Media {mid_str} not found",
+                code="chat.media_not_found",
+                params={"id": mid_str},
+            )
         if media.status != MediaStatus.READY:
-            raise AppValidationError(f"Media {mid_str} is not ready")
+            raise AppValidationError(
+                f"Media {mid_str} is not ready",
+                code="chat.media_not_ready",
+                params={"id": mid_str},
+            )
         uploader: User = media.uploaded_by
         if uploader.id != user.id:
-            raise PermissionDeniedError(f"Media {mid_str} was not uploaded by you")
+            raise PermissionDeniedError(
+                f"Media {mid_str} was not uploaded by you",
+                code="chat.media_not_yours",
+                params={"id": mid_str},
+            )
         media_snapshots.append(
             {
                 "id": str(media.id),
@@ -198,7 +222,7 @@ async def get_messages(
 async def mark_messages_read(order_id: str, user_id: str, until_message_id: str) -> int:
     until_msg = await ChatMessage.get_or_none(id=until_message_id, order_id=order_id)
     if until_msg is None:
-        raise NotFoundError("Message not found")
+        raise NotFoundError("Message not found", code="chat.message_not_found")
 
     count: int = (
         await ChatMessage.filter(

@@ -18,7 +18,10 @@ async def create_reservation(
         end_date__gte=start_date,
     ).exists()
     if overlap_exists:
-        raise AppValidationError("Cannot approve: overlapping reservation exists for this listing")
+        raise AppValidationError(
+            "Cannot approve: overlapping reservation exists for this listing",
+            code="orders.reservation_overlap",
+        )
     return await Reservation.create(
         id=uuid4(),
         listing_id=listing_id,

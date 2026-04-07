@@ -45,16 +45,24 @@ async def request_upload_url(
     storage: StorageClient,
 ) -> UploadUrlResponse:
     if data.content_type not in _allowed_types(data.kind):
-        raise AppValidationError(f"Content type '{data.content_type}' is not allowed for {data.kind.value}")
+        raise AppValidationError(
+            f"Content type '{data.content_type}' is not allowed for {data.kind.value}",
+            code="media.invalid_content_type",
+            params={"content_type": data.content_type, "kind": data.kind.value},
+        )
 
     max_size = _max_size_bytes(data.kind)
     if data.file_size > max_size:
-        raise AppValidationError(f"File size exceeds maximum of {max_size // (1024 * 1024)} MB for {data.kind.value}")
+        raise AppValidationError(
+            f"File size exceeds maximum of {max_size // (1024 * 1024)} MB for {data.kind.value}",
+            code="media.file_too_large",
+            params={"max_mb": max_size // (1024 * 1024), "kind": data.kind.value},
+        )
 
     media_id = uuid4()
     safe_filename = PurePosixPath(data.filename).name
     if not safe_filename:
-        raise AppValidationError("Invalid filename")
+        raise AppValidationError("Invalid filename", code="media.invalid_filename")
     upload_key = f"pending/{media_id}/{safe_filename}"
 
     await Media.create(
@@ -86,10 +94,14 @@ async def confirm_upload(
     storage: StorageClient,
 ) -> Media:
     if media.status != MediaStatus.PENDING_UPLOAD:
-        raise AppValidationError(f"Media is in '{media.status}' state, expected 'pending_upload'")
+        raise AppValidationError(
+            f"Media is in '{media.status}' state, expected 'pending_upload'",
+            code="media.not_pending_upload",
+            params={"status": media.status.value},
+        )
 
     if not await storage.exists(media.upload_key):
-        raise NotFoundError("Uploaded file not found in storage")
+        raise NotFoundError("Uploaded file not found in storage", code="media.upload_missing")
 
     media.status = MediaStatus.PROCESSING
     await media.save()
@@ -146,7 +158,7 @@ async def cleanup_orphaned_media(storage: StorageClient, max_age_hours: int = 24
 @traced
 async def retry_media(media: Media) -> Media:
     if media.status != MediaStatus.FAILED:
-        raise AppValidationError("Only failed media can be retried")
+        raise AppValidationError("Only failed media can be retried", code="media.not_failed")
     media.status = MediaStatus.PROCESSING
     await media.save()
 
@@ -210,15 +222,19 @@ async def attach_profile_photo(
 
     media = await Media.get_or_none(id=media_id).prefetch_related("uploaded_by")
     if media is None:
-        raise NotFoundError("Media not found")
+        raise NotFoundError("Media not found", code="media.not_found")
     if media.status != MediaStatus.READY:
-        raise AppValidationError("Media is not ready")
+        raise AppValidationError("Media is not ready", code="media.not_ready", params={"id": str(media_id)})
 
     uploader: User = media.uploaded_by
     if uploader.id != user.id:
-        raise PermissionDeniedError("You can only attach your own uploads")
+        raise PermissionDeniedError("You can only attach your own uploads", code="media.not_uploader")
     if media.kind != MediaKind.PHOTO:
-        raise AppValidationError("Only photos can be used as profile photo")
+        raise AppValidationError(
+            "Only photos can be used as profile photo",
+            code="media.wrong_kind",
+            params={"id": str(media_id), "kind": media.kind.value, "expected_kind": MediaKind.PHOTO.value},
+        )
 
     media.owner_type = owner_type
     media.owner_id = owner_id
@@ -239,11 +255,23 @@ async def attach_listing_media(
     settings = get_settings()
 
     if len(photo_ids) > settings.media.listing_limits_max_photos:
-        raise AppValidationError(f"Maximum {settings.media.listing_limits_max_photos} photos allowed")
+        raise AppValidationError(
+            f"Maximum {settings.media.listing_limits_max_photos} photos allowed",
+            code="media.limit_exceeded",
+            params={"max": settings.media.listing_limits_max_photos, "kind": MediaKind.PHOTO.value},
+        )
     if len(video_ids) > settings.media.listing_limits_max_videos:
-        raise AppValidationError(f"Maximum {settings.media.listing_limits_max_videos} videos allowed")
+        raise AppValidationError(
+            f"Maximum {settings.media.listing_limits_max_videos} videos allowed",
+            code="media.limit_exceeded",
+            params={"max": settings.media.listing_limits_max_videos, "kind": MediaKind.VIDEO.value},
+        )
     if len(document_ids) > settings.media.listing_limits_max_documents:
-        raise AppValidationError(f"Maximum {settings.media.listing_limits_max_documents} documents allowed")
+        raise AppValidationError(
+            f"Maximum {settings.media.listing_limits_max_documents} documents allowed",
+            code="media.limit_exceeded",
+            params={"max": settings.media.listing_limits_max_documents, "kind": MediaKind.DOCUMENT.value},
+        )
 
     # Detach all current media from this listing
     await Media.filter(
@@ -260,14 +288,22 @@ async def attach_listing_media(
     for position, (media_id, expected_kind) in enumerate(all_ids_with_kind):
         media = await Media.get_or_none(id=media_id).prefetch_related("uploaded_by")
         if media is None:
-            raise NotFoundError(f"Media {media_id} not found")
+            raise NotFoundError(f"Media {media_id} not found", code="media.not_found")
         uploader: User = media.uploaded_by
         if uploader.id != user.id:
-            raise PermissionDeniedError(f"Media {media_id} was not uploaded by you")
+            raise PermissionDeniedError(f"Media {media_id} was not uploaded by you", code="media.not_uploader")
         if media.status != MediaStatus.READY:
-            raise AppValidationError(f"Media {media_id} is not ready")
+            raise AppValidationError(
+                f"Media {media_id} is not ready",
+                code="media.not_ready",
+                params={"id": str(media_id)},
+            )
         if media.kind != expected_kind:
-            raise AppValidationError(f"Media {media_id} is {media.kind.value}, expected {expected_kind.value}")
+            raise AppValidationError(
+                f"Media {media_id} is {media.kind.value}, expected {expected_kind.value}",
+                code="media.wrong_kind",
+                params={"id": str(media_id), "kind": media.kind.value, "expected_kind": expected_kind.value},
+            )
 
         media.owner_type = MediaOwnerType.LISTING
         media.owner_id = listing_id
