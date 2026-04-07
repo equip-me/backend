@@ -4,6 +4,7 @@ from collections.abc import AsyncGenerator
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
+from fastapi.exceptions import RequestValidationError
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from tortoise.contrib.fastapi import RegisterTortoise
@@ -14,7 +15,7 @@ from app.chat.router import router as chat_router
 from app.chat.websocket import ws_router as chat_ws_router
 from app.core.config import get_settings
 from app.core.database import get_tortoise_config
-from app.core.exceptions import AppError, app_error_handler
+from app.core.exceptions import AppError, app_error_handler, validation_error_handler
 from app.listings.categories_router import router as categories_router
 from app.listings.models import ListingCategory
 from app.listings.router import router as listings_router
@@ -69,7 +70,10 @@ async def _handle_app_error(request: Request, exc: Exception) -> JSONResponse:
     if isinstance(exc, AppError):
         return await app_error_handler(request, exc)
     logger.exception("Unhandled error on %s %s", request.method, request.url.path)
-    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+    return JSONResponse(
+        status_code=500,
+        content={"code": "server.internal_error", "detail": "Internal server error", "params": {}},
+    )
 
 
 def create_app() -> FastAPI:
@@ -94,6 +98,7 @@ def create_app() -> FastAPI:
     instrument_app(application)
 
     application.add_exception_handler(AppError, _handle_app_error)
+    application.add_exception_handler(RequestValidationError, validation_error_handler)
     application.include_router(users_router)
     application.include_router(organizations_router)
     application.include_router(members_router)

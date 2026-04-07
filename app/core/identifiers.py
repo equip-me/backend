@@ -36,4 +36,4 @@ async def create_with_short_id[M: Model](
                 continue
             raise
     msg = f"Failed to generate unique ID for {model_class.__name__} after {max_retries} attempts"
-    raise IDGenerationError(msg) from last_exc
+    raise IDGenerationError(msg, code="server.internal_error") from last_exc

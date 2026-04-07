@@ -332,7 +332,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Too late"})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "read_only"
+                assert error["data"]["code"] == "chat.read_only"
 
     async def test_messages_visible_in_rest_after_ws_send(
         self,
@@ -410,7 +410,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message"})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.message_empty"
 
     async def test_message_author_display(
         self,
@@ -519,7 +519,7 @@ class TestChatWebSocket:
                 await ws.send_text("not valid json{{{")
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "invalid_json"
+                assert error["data"]["code"] == "chat.invalid_json"
 
     async def test_ws_rate_limiting(
         self,
@@ -542,7 +542,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Over limit"})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "rate_limited"
+                assert error["data"]["code"] == "chat.rate_limited"
 
     async def test_ws_typing_indicator(
         self,
@@ -596,7 +596,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": long_text})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.message_too_long"
 
     async def test_ws_message_with_invalid_media_id(
         self,
@@ -614,7 +614,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Hi", "media_ids": ["not-a-uuid"]})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.invalid_media_id"
 
     async def test_ws_message_with_nonexistent_media(
         self,
@@ -635,7 +635,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Hi", "media_ids": [fake_id]})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.media_not_found"
 
     async def test_ws_read_missing_message_id(
         self,
@@ -780,7 +780,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Photo", "media_ids": [str(media_id)]})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.media_not_ready"
 
     async def test_message_with_others_media(
         self,
@@ -820,7 +820,7 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Stolen", "media_ids": [str(media_id)]})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.media_not_yours"
 
     async def test_message_too_many_attachments(
         self,
@@ -838,4 +838,4 @@ class TestChatWebSocket:
                 await ws.send_json({"type": "message", "text": "Too many", "media_ids": fake_ids})
                 error = await ws_receive(ws)
                 assert error["type"] == "error"
-                assert error["data"]["code"] == "validation_error"
+                assert error["data"]["code"] == "chat.too_many_attachments"

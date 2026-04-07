@@ -34,7 +34,7 @@ async def resolve_listing(
     org: Organization = membership.organization
     listing = await Listing.get_or_none(id=listing_id, organization=org).prefetch_related("category")
     if listing is None:
-        raise NotFoundError("Listing not found")
+        raise NotFoundError("Listing not found", code="listings.not_found")
     return listing
 
 
@@ -44,18 +44,18 @@ async def resolve_public_listing(
 ) -> Listing:
     listing = await Listing.get_or_none(id=listing_id).prefetch_related("category", "organization")
     if listing is None:
-        raise NotFoundError("Listing not found")
+        raise NotFoundError("Listing not found", code="listings.not_found")
     org: Organization = listing.organization
     if org.status != OrganizationStatus.VERIFIED:
         if user is None:
-            raise PermissionDeniedError("Access denied")
+            raise PermissionDeniedError("Access denied", code="listings.access_denied")
         is_member = await Membership.filter(
             organization=org,
             user=user,
             status=MembershipStatus.MEMBER,
         ).exists()
         if not is_member:
-            raise PermissionDeniedError("Access denied")
+            raise PermissionDeniedError("Access denied", code="listings.access_denied")
     return listing
 
 

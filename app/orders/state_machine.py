@@ -33,6 +33,9 @@ _TRANSITIONS: dict[tuple[OrderStatus, OrderAction], OrderStatus] = {
 def transition(current: OrderStatus, action: OrderAction) -> OrderStatus:
     key = (current, action)
     if key not in _TRANSITIONS:
-        msg = f"Cannot {action.value} order in status {current.value}"
-        raise AppValidationError(msg)
+        raise AppValidationError(
+            f"Cannot {action.value} order in status {current.value}",
+            code="orders.invalid_transition",
+            params={"action": action.value, "status": current.value},
+        )
     return _TRANSITIONS[key]

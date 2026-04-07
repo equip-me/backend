@@ -14,7 +14,7 @@ async def resolve_media(
 ) -> Media:
     media = await Media.get_or_none(id=media_id).prefetch_related("uploaded_by")
     if media is None:
-        raise NotFoundError("Media not found")
+        raise NotFoundError("Media not found", code="media.not_found")
     return media
 
 
@@ -24,5 +24,5 @@ async def require_media_uploader(
 ) -> Media:
     uploader: User = media.uploaded_by
     if uploader.id != user.id:
-        raise PermissionDeniedError("You can only manage your own uploads")
+        raise PermissionDeniedError("You can only manage your own uploads", code="media.not_uploader")
     return media

@@ -11,7 +11,7 @@ from app.users.models import User
 async def get_order_or_404(order_id: str = Path()) -> Order:
     order = await Order.get_or_none(id=order_id)
     if order is None:
-        raise NotFoundError("Order not found")
+        raise NotFoundError("Order not found", code="orders.not_found")
     return order
 
 
@@ -20,12 +20,12 @@ async def require_order_requester(
     user: Annotated[User, Depends(require_active_user)],
 ) -> Order:
     if order.requester_id != user.id:
-        raise PermissionDeniedError("You are not the requester of this order")
+        raise PermissionDeniedError("You are not the requester of this order", code="orders.not_requester")
     return order
 
 
 async def get_org_order_or_404(org_id: str = Path(), order_id: str = Path()) -> Order:
     order = await Order.get_or_none(id=order_id, organization_id=org_id)
     if order is None:
-        raise NotFoundError("Order not found")
+        raise NotFoundError("Order not found", code="orders.not_found")
     return order

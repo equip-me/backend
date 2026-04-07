@@ -57,16 +57,16 @@ async def _schedule_finish_job(order: Order) -> None:
 async def create_order(user: User, data: OrderCreate) -> OrderRead:
     listing = await Listing.get_or_none(id=data.listing_id).select_related("organization")
     if listing is None:
-        raise NotFoundError("Listing not found")
+        raise NotFoundError("Listing not found", code="listings.not_found")
 
     if listing.status != ListingStatus.PUBLISHED:
-        raise AppValidationError("Listing is not available for ordering")
+        raise AppValidationError("Listing is not available for ordering", code="orders.listing_unavailable")
 
     if listing.organization.status != OrganizationStatus.VERIFIED:
-        raise PermissionDeniedError("Organization is not verified")
+        raise PermissionDeniedError("Organization is not verified", code="orders.org_not_verified")
 
     if data.requested_start_date < datetime.now(UTC).date():
-        raise AppValidationError("requested_start_date cannot be in the past")
+        raise AppValidationError("requested_start_date cannot be in the past", code="orders.start_date_in_past")
 
     days = Decimal((data.requested_end_date - data.requested_start_date).days + 1)
     price = Decimal(str(listing.price))
@@ -122,7 +122,7 @@ async def approve_order(order: Order) -> OrderRead:
     order.status = transition(order.status, OrderAction.APPROVE_BY_ORG)
 
     if order.offered_start_date is None or order.offered_end_date is None:
-        raise AppValidationError("Cannot approve order without offered dates")
+        raise AppValidationError("Cannot approve order without offered dates", code="orders.no_offered_dates")
 
     await reservation_service.create_reservation(
         listing_id=order.listing_id,

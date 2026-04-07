@@ -67,7 +67,7 @@ async def create_organization(
 ) -> OrganizationRead:
     existing = await Organization.filter(inn=data.inn).exists()
     if existing:
-        raise AlreadyExistsError("Organization with this INN already exists")
+        raise AlreadyExistsError("Organization with this INN already exists", code="org.inn_taken")
 
     start = time.monotonic()
     try:
@@ -81,10 +81,18 @@ async def create_organization(
         dadata_requests.add(1, {"success": "false"})
         dadata_duration.record(duration_ms)
         emit_event("dadata.called", inn=data.inn, success="false", duration_ms=str(int(duration_ms)))
-        raise ExternalServiceError("Dadata service unavailable") from e
+        raise ExternalServiceError(
+            "Dadata service unavailable",
+            code="server.external_service_unavailable",
+            params={"service": "dadata"},
+        ) from e
 
     if not results:
-        raise ExternalServiceError("Organization not found by INN")
+        raise ExternalServiceError(
+            "Organization not found by INN",
+            code="server.external_service_not_found",
+            params={"service": "dadata"},
+        )
 
     dadata_result = results[0]
     dadata_fields = _extract_dadata_fields(dadata_result)
@@ -123,7 +131,7 @@ async def create_organization(
 async def get_organization(org_id: str) -> OrganizationRead:
     org = await Organization.get_or_none(id=org_id).prefetch_related("contacts")
     if org is None:
-        raise NotFoundError("Organization not found")
+        raise NotFoundError("Organization not found", code="org.not_found")
     return OrganizationRead.model_validate(org)
 
 
@@ -187,7 +195,7 @@ async def replace_contacts(org_id: str, data: ContactsReplace) -> list[ContactRe
 async def get_payment_details(org_id: str) -> PaymentDetailsRead:
     pd = await PaymentDetails.get_or_none(organization_id=org_id)
     if pd is None:
-        raise NotFoundError("Payment details not found")
+        raise NotFoundError("Payment details not found", code="org.payment_details_not_found")
     return PaymentDetailsRead.model_validate(pd)
 
 
@@ -211,10 +219,12 @@ async def upsert_payment_details(org_id: str, data: PaymentDetailsCreate) -> Pay
 async def invite_member(org_id: str, data: MembershipInvite) -> MembershipRead:
     target_user = await User.get_or_none(id=data.user_id)
     if target_user is None:
-        raise NotFoundError("User not found")
+        raise NotFoundError("User not found", code="users.not_found")
     existing = await Membership.get_or_none(user=target_user, organization_id=org_id)
     if existing is not None:
-        raise AlreadyExistsError("User already has a membership in this organization")
+        raise AlreadyExistsError(
+            "User already has a membership in this organization", code="org.member_already_exists"
+        )
     membership = await Membership.create(
         id=uuid4(),
         user=target_user,
@@ -230,7 +240,9 @@ async def invite_member(org_id: str, data: MembershipInvite) -> MembershipRead:
 async def join_organization(org_id: str, user: User) -> MembershipRead:
     existing = await Membership.get_or_none(user=user, organization_id=org_id)
     if existing is not None:
-        raise AlreadyExistsError("You already have a membership in this organization")
+        raise AlreadyExistsError(
+            "You already have a membership in this organization", code="org.member_already_exists"
+        )
     membership = await Membership.create(
         id=uuid4(),
         user=user,
@@ -245,9 +257,9 @@ async def join_organization(org_id: str, user: User) -> MembershipRead:
 async def approve_candidate(org_id: str, member_id: str, data: MembershipApprove) -> MembershipRead:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
-        raise NotFoundError("Membership not found")
+        raise NotFoundError("Membership not found", code="org.membership_not_found")
     if membership.status != MembershipStatus.CANDIDATE:
-        raise AppValidationError("Only candidates can be approved")
+        raise AppValidationError("Only candidates can be approved", code="org.not_candidate")
     membership.role = data.role
     membership.status = MembershipStatus.MEMBER
     await membership.save()
@@ -258,13 +270,13 @@ async def approve_candidate(org_id: str, member_id: str, data: MembershipApprove
 async def accept_invitation(org_id: str, member_id: str, user: User) -> MembershipRead:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
-        raise NotFoundError("Membership not found")
+        raise NotFoundError("Membership not found", code="org.membership_not_found")
     await membership.fetch_related("user")
     membership_user: User = membership.user
     if membership_user.id != user.id:
-        raise PermissionDeniedError("You can only accept your own invitation")
+        raise PermissionDeniedError("You can only accept your own invitation", code="org.not_own_invitation")
     if membership.status != MembershipStatus.INVITED:
-        raise AppValidationError("Only invitations can be accepted")
+        raise AppValidationError("Only invitations can be accepted", code="org.not_invited")
     membership.status = MembershipStatus.MEMBER
     await membership.save()
     emit_event("membership.accepted", org_id=org_id, user_id=user.id)
@@ -287,11 +299,11 @@ async def _is_last_admin(org_id: str, member_id: str) -> bool:
 async def change_member_role(org_id: str, member_id: str, data: MembershipRoleUpdate) -> MembershipRead:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
-        raise NotFoundError("Membership not found")
+        raise NotFoundError("Membership not found", code="org.membership_not_found")
     if membership.status != MembershipStatus.MEMBER:
-        raise AppValidationError("Can only change role of active members")
+        raise AppValidationError("Can only change role of active members", code="org.not_active_member")
     if data.role != MembershipRole.ADMIN and await _is_last_admin(org_id, member_id):
-        raise AppValidationError("Cannot remove the last admin")
+        raise AppValidationError("Cannot remove the last admin", code="org.last_admin")
     membership.role = data.role
     await membership.save()
     return MembershipRead.model_validate(membership)
@@ -301,7 +313,7 @@ async def change_member_role(org_id: str, member_id: str, data: MembershipRoleUp
 async def remove_member(org_id: str, member_id: str, user: User) -> None:
     membership = await Membership.get_or_none(id=member_id, organization_id=org_id)
     if membership is None:
-        raise NotFoundError("Membership not found")
+        raise NotFoundError("Membership not found", code="org.membership_not_found")
 
     # Check if self-removal
     await membership.fetch_related("user")
@@ -316,14 +328,14 @@ async def remove_member(org_id: str, member_id: str, user: User) -> None:
             role=MembershipRole.ADMIN,
         )
         if caller_membership is None:
-            raise PermissionDeniedError("Only admins can remove other members")
+            raise PermissionDeniedError("Only admins can remove other members", code="org.cannot_remove_member")
 
     if (
         membership.role == MembershipRole.ADMIN
         and membership.status == MembershipStatus.MEMBER
         and await _is_last_admin(org_id, member_id)
     ):
-        raise AppValidationError("Cannot remove the last admin")
+        raise AppValidationError("Cannot remove the last admin", code="org.last_admin")
 
     await membership.delete()
 
@@ -343,7 +355,7 @@ async def list_members(
 async def verify_organization(org_id: str) -> OrganizationRead:
     org = await Organization.get_or_none(id=org_id)
     if org is None:
-        raise NotFoundError("Organization not found")
+        raise NotFoundError("Organization not found", code="org.not_found")
     org.status = OrganizationStatus.VERIFIED
     await org.save()
     await org.fetch_related("contacts")

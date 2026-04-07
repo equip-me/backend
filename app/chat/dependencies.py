@@ -13,7 +13,7 @@ from app.users.models import User
 async def get_order_or_404(order_id: str = Path()) -> Order:
     order = await Order.get_or_none(id=order_id)
     if order is None:
-        raise NotFoundError("Order not found")
+        raise NotFoundError("Order not found", code="orders.not_found")
     return order
 
 
@@ -22,14 +22,14 @@ async def require_chat_participant_user(
     user: Annotated[User, Depends(require_active_user)],
 ) -> tuple[Order, User]:
     if order.requester_id != user.id:
-        raise PermissionDeniedError("Not a chat participant")
+        raise PermissionDeniedError("Not a chat participant", code="chat.not_participant")
     return order, user
 
 
 async def get_org_order_or_404(org_id: str = Path(), order_id: str = Path()) -> Order:
     order = await Order.get_or_none(id=order_id, organization_id=org_id)
     if order is None:
-        raise NotFoundError("Order not found")
+        raise NotFoundError("Order not found", code="orders.not_found")
     return order
 
 
@@ -44,5 +44,5 @@ async def require_chat_participant_org(
         role__in=[MembershipRole.ADMIN, MembershipRole.EDITOR],
     )
     if membership is None:
-        raise PermissionDeniedError("Organization editor access required")
+        raise PermissionDeniedError("Organization editor access required", code="org.editor_required")
     return order, user

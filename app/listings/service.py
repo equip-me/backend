@@ -87,11 +87,11 @@ async def list_public_categories() -> list[ListingCategoryRead]:
 async def _validate_category(category_id: str, org: Organization) -> ListingCategory:
     category = await ListingCategory.get_or_none(id=category_id)
     if category is None:
-        raise NotFoundError("Category not found")
+        raise NotFoundError("Category not found", code="listings.category_not_found")
     if not category.verified:
         owned = await ListingCategory.filter(id=category_id, organization_id=org.id).exists()
         if not owned:
-            raise NotFoundError("Category not found")
+            raise NotFoundError("Category not found", code="listings.category_not_found")
     return category
 
 
@@ -234,7 +234,7 @@ async def get_listing_read(listing: Listing, storage: StorageClient) -> ListingR
 async def list_org_categories(org_id: str) -> list[ListingCategoryRead]:
     org_exists = await Organization.filter(id=org_id).exists()
     if not org_exists:
-        raise NotFoundError("Organization not found")
+        raise NotFoundError("Organization not found", code="org.not_found")
     categories = (
         await ListingCategory.filter(
             listings__organization_id=org_id,
