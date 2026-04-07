@@ -134,6 +134,7 @@ WebSocket close codes remain protocol-level (not part of the error code system):
 | Code                          | Status | Params                                   | Detail                                                      | When                                      |
 | ----------------------------- | ------ | ---------------------------------------- | ----------------------------------------------------------- | ----------------------------------------- |
 | `orders.not_found`            | 404    | —                                        | Order not found                                             | Order ID doesn't exist                    |
+| `orders.not_requester`        | 403    | —                                        | You are not the requester of this order                     | Non-requester attempts requester action   |
 | `orders.listing_unavailable`  | 400    | —                                        | Listing is not available for ordering                       | Listing not in PUBLISHED status           |
 | `orders.org_not_verified`     | 403    | —                                        | Organization is not verified                                | Order from unverified org                 |
 | `orders.start_date_in_past`   | 400    | —                                        | requested_start_date cannot be in the past                  | Start date before today                   |
