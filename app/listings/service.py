@@ -231,6 +231,26 @@ async def get_listing_read(listing: Listing, storage: StorageClient) -> ListingR
 
 
 @traced
+async def list_available_categories(org_id: str) -> list[ListingCategoryRead]:
+    verified_org_ids = await _verified_org_ids()
+    categories = (
+        await ListingCategory.filter(Q(verified=True) | Q(organization_id=org_id))
+        .annotate(
+            listing_count=Count(
+                "listings",
+                _filter=Q(
+                    listings__status=ListingStatus.PUBLISHED,
+                    listings__organization_id__in=verified_org_ids,
+                ),
+            ),
+        )
+        .distinct()
+        .order_by("-listing_count")
+    )
+    return [_category_to_read(c) for c in categories]
+
+
+@traced
 async def list_org_categories(org_id: str) -> list[ListingCategoryRead]:
     org_exists = await Organization.filter(id=org_id).exists()
     if not org_exists:

@@ -349,6 +349,7 @@ Seed categories are created with `verified = true` and no organization.
 **Category listing rules:**
 - **Public listing (no org filter):** returns only `verified = true` categories, ordered by listing count descending.
 - **Organization-specific listing:** returns categories that have listings belonging to that organization, plus all `verified = true` categories, ordered by listing count descending.
+- **Available categories (org members only):** returns all `verified = true` categories plus all categories owned by the organization, regardless of whether they have listings. Ordered by listing count descending.
 
 Category model:
 
@@ -395,7 +396,8 @@ Listings from unverified organizations are invisible to non-members. Direct acce
 | GET | `/api/v1/listings/` | Public | Browse published listings (verified orgs only) |
 | GET | `/api/v1/listings/{id}` | Public | Get single listing |
 | GET | `/api/v1/listings/categories/` | Public | List verified (global) categories |
-| GET | `/api/v1/organizations/{org_id}/listings/categories/` | Org Member | List org's categories (including global) |
+| GET | `/api/v1/organizations/{org_id}/listings/categories/` | Public | List org's categories with published listings (including global) |
+| GET | `/api/v1/organizations/{org_id}/listings/categories/available/` | Org Member | List all available categories (verified + org-owned) |
 | POST | `/api/v1/organizations/{org_id}/listings/categories/` | Org Editor | Create category for the organization |
 
 ---
