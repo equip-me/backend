@@ -178,6 +178,111 @@ class TestListOrgCategories:
         assert resp.status_code == 404
 
 
+class TestListAvailableCategories:
+    async def test_returns_verified_and_org_categories(
+        self,
+        client: AsyncClient,
+        seed_categories: list[ListingCategory],
+        create_organization: Any,
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        # Create an org-specific category (unverified)
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/categories/",
+            json={"name": "Org Custom"},
+            headers=headers,
+        )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/categories/available/",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        names = [c["name"] for c in body]
+        # Verified seed categories present
+        assert "Спецтехника" in names
+        assert "Промышленное оборудование" in names
+        # Org-owned unverified category present
+        assert "Org Custom" in names
+
+    async def test_excludes_other_org_categories(
+        self,
+        client: AsyncClient,
+        seed_categories: list[ListingCategory],
+        create_organization: Any,
+        create_user: Any,
+    ) -> None:
+        # Org A creates a category
+        org_a_data, token_a = await create_organization()
+        org_a_id = org_a_data["id"]
+        await client.post(
+            f"/api/v1/organizations/{org_a_id}/listings/categories/",
+            json={"name": "Org A Only"},
+            headers={"Authorization": f"Bearer {token_a}"},
+        )
+        # Org B should not see Org A's category
+        _, token_b = await create_user(email="orgb@example.com")
+        org_b_data, token_b = await create_organization(token=token_b, inn="5001012345")
+        org_b_id = org_b_data["id"]
+        resp = await client.get(
+            f"/api/v1/organizations/{org_b_id}/listings/categories/available/",
+            headers={"Authorization": f"Bearer {token_b}"},
+        )
+        assert resp.status_code == 200
+        names = [c["name"] for c in resp.json()]
+        assert "Org A Only" not in names
+
+    async def test_requires_auth(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+    ) -> None:
+        org_data, _ = await create_organization()
+        org_id = org_data["id"]
+        resp = await client.get(f"/api/v1/organizations/{org_id}/listings/categories/available/")
+        assert resp.status_code == 401
+
+    async def test_requires_membership(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        create_user: Any,
+    ) -> None:
+        org_data, _ = await create_organization()
+        org_id = org_data["id"]
+        _, outsider_token = await create_user(email="outsider@example.com")
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/categories/available/",
+            headers={"Authorization": f"Bearer {outsider_token}"},
+        )
+        assert resp.status_code == 403
+
+    async def test_includes_categories_with_zero_listings(
+        self,
+        client: AsyncClient,
+        seed_categories: list[ListingCategory],
+        create_organization: Any,
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        # Create category but no listings
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/categories/",
+            json={"name": "Empty Cat"},
+            headers=headers,
+        )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/categories/available/",
+            headers=headers,
+        )
+        body = resp.json()
+        empty_cat = next(c for c in body if c["name"] == "Empty Cat")
+        assert empty_cat["listing_count"] == 0
+
+
 class TestCreateListing:
     async def test_create_listing_success(
         self,
