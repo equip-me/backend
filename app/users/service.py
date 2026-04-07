@@ -137,3 +137,19 @@ async def list_users(
         user_reads.append(user_read)
 
     return PaginatedResponse(items=user_reads, next_cursor=next_cursor, has_more=has_more)
+
+
+@traced
+async def search_users_by_email(
+    email: str,
+    limit: int,
+    storage: StorageClient,
+) -> list[UserRead]:
+    users = await User.filter(email__icontains=email).exclude(role=UserRole.SUSPENDED).order_by("email").limit(limit)
+    result: list[UserRead] = []
+    for user in users:
+        photo = await media_service.get_profile_photo(MediaOwnerType.USER, user.id, storage)
+        user_read = UserRead.model_validate(user)
+        user_read.profile_photo = photo
+        result.append(user_read)
+    return result

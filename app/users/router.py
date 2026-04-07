@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 
 from app.core.dependencies import require_active_user
 from app.core.enums import MediaOwnerType
@@ -54,6 +54,16 @@ async def update_me(
     user_read = UserRead.model_validate(updated)
     user_read.profile_photo = photo
     return user_read
+
+
+@router.get("/search", response_model=list[UserRead])
+async def search_users(
+    _user: Annotated[User, Depends(require_active_user)],
+    storage: Annotated[StorageClient, Depends(get_storage)],
+    email: Annotated[str, Query(min_length=3)],
+    limit: Annotated[int, Query(ge=1, le=20)] = 10,
+) -> list[UserRead]:
+    return await service.search_users_by_email(email, limit, storage)
 
 
 @router.get("/me/organizations", response_model=PaginatedResponse[OrganizationRead])
