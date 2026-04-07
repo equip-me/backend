@@ -105,7 +105,6 @@ WebSocket close codes remain protocol-level (not part of the error code system):
 | ----------------------------- | ------ | ------ | --------------------------------------------------------- | --------------------------------------------- |
 | `org.not_found`               | 404    | —      | Organization not found                                    | Org ID doesn't exist                          |
 | `org.inn_taken`               | 409    | —      | Organization with this INN already exists                 | Create org with duplicate INN                 |
-| `org.not_verified`            | 403    | —      | Organization is not verified                              | Unverified org attempts restricted action     |
 | `org.membership_required`     | 403    | —      | Organization membership required                          | Non-member accesses org resource              |
 | `org.editor_required`         | 403    | —      | Organization editor access required                       | Viewer attempts editor action                 |
 | `org.admin_required`          | 403    | —      | Organization admin access required                        | Non-admin attempts admin action               |
@@ -154,9 +153,9 @@ WebSocket close codes remain protocol-level (not part of the error code system):
 | `media.not_pending_upload`  | 400    | `{"status": "ready"}`                                   | Media is in 'ready' state, expected 'pending_upload'      | Confirm already-processed media    |
 | `media.upload_missing`      | 404    | —                                                       | Uploaded file not found in storage                        | File not in S3 after confirm       |
 | `media.not_failed`          | 400    | —                                                       | Only failed media can be retried                          | Retry non-failed media             |
-| `media.limit_exceeded`      | 400    | `{"max": 10, "kind": "photo"}`                          | Maximum 10 photo allowed                                  | Too many media attached            |
-| `media.wrong_kind`          | 400    | `{"id": "abc", "kind": "video", "expected_kind": "photo"}` | Media abc is video, expected photo                    | Wrong media type for context       |
-| `media.not_ready`           | 400    | `{"id": "abc"}`                                         | Media abc is not ready                                    | Attach non-ready media             |
+| `media.limit_exceeded`      | 400    | `{"max": 10, "kind": "photo"}`                          | Maximum 10 photos allowed                                 | Too many media attached            |
+| `media.wrong_kind`          | 400    | `{"id": "abc", "kind": "video", "expected_kind": "photo"}` | Only photos can be used as profile photo              | Wrong media type for context       |
+| `media.not_ready`           | 400    | `{"id": "abc"}`                                         | Media is not ready                                        | Attach non-ready media             |
 
 ### Domain: `chat`
 
@@ -170,8 +169,8 @@ WebSocket error frames (sent over open connection, do not close it):
 
 | Code                       | Params                                 | Detail                                | When                              |
 | -------------------------- | -------------------------------------- | ------------------------------------- | --------------------------------- |
-| `chat.read_only`           | —                                      | Chat is in read-only mode             | Send message after cooldown       |
-| `chat.rate_limited`        | `{"limit": 30, "window_seconds": 60}` | Rate limit exceeded                   | Too many messages                 |
+| `chat.read_only`           | —                                      | Chat is read-only                     | Send message after cooldown       |
+| `chat.rate_limited`        | `{"limit": 30, "window_seconds": 60}` | Too many messages, slow down          | Too many messages                 |
 | `chat.invalid_json`        | —                                      | Invalid JSON                          | Malformed WebSocket frame         |
 | `chat.message_empty`       | —                                      | Message must have text or attachments | Empty message                     |
 | `chat.message_too_long`    | `{"max_length": 4000}`                | Message exceeds maximum length        | Text too long                     |
@@ -180,6 +179,8 @@ WebSocket error frames (sent over open connection, do not close it):
 | `chat.media_not_found`     | `{"id": "..."}`                        | Media not found                       | Referenced media doesn't exist    |
 | `chat.media_not_ready`     | `{"id": "..."}`                        | Media is not ready                    | Referenced media still processing |
 | `chat.media_not_yours`     | `{"id": "..."}`                        | Media was not uploaded by you         | Attach another user's media       |
+| `chat.message_not_found`  | —                                      | Message not found                     | Read receipt for missing message  |
+| `chat.validation_error`   | —                                      | (dynamic)                             | Unexpected error during send      |
 
 ### Domain: `validation` (422 field-level)
 

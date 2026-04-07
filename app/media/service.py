@@ -228,7 +228,7 @@ async def attach_profile_photo(
 
     uploader: User = media.uploaded_by
     if uploader.id != user.id:
-        raise PermissionDeniedError("You can only attach your own uploads", code="media.not_uploader")
+        raise PermissionDeniedError("You can only manage your own uploads", code="media.not_uploader")
     if media.kind != MediaKind.PHOTO:
         raise AppValidationError(
             "Only photos can be used as profile photo",
@@ -291,7 +291,7 @@ async def attach_listing_media(
             raise NotFoundError(f"Media {media_id} not found", code="media.not_found")
         uploader: User = media.uploaded_by
         if uploader.id != user.id:
-            raise PermissionDeniedError(f"Media {media_id} was not uploaded by you", code="media.not_uploader")
+            raise PermissionDeniedError("You can only manage your own uploads", code="media.not_uploader")
         if media.status != MediaStatus.READY:
             raise AppValidationError(
                 f"Media {media_id} is not ready",
