@@ -519,3 +519,128 @@ async def test_privilege_route_rejects_user_role(
         headers={"Authorization": f"Bearer {owner_token}"},
     )
     assert resp.status_code == 422
+
+
+# ── User search ────────────────────────────────────────────
+
+
+async def test_search_users_by_partial_email(client: AsyncClient, create_user: Any) -> None:
+    await create_user(email="alice@example.com")
+    await create_user(email="alice.b@example.com", phone="+79001112233")
+    await create_user(email="bob@example.com", phone="+79002223344")
+    _, token = await create_user(email="searcher@example.com", phone="+79003334455")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "alice"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    emails = [u["email"] for u in resp.json()]
+    assert "alice@example.com" in emails
+    assert "alice.b@example.com" in emails
+    assert "bob@example.com" not in emails
+
+
+async def test_search_users_case_insensitive(client: AsyncClient, create_user: Any) -> None:
+    await create_user(email="Alice.Upper@example.com")
+    _, token = await create_user(email="searcher2@example.com", phone="+79001112233")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "alice.upper"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 1
+    assert resp.json()[0]["email"] == "Alice.Upper@example.com"
+
+
+async def test_search_users_returns_all_fields(client: AsyncClient, create_user: Any) -> None:
+    await create_user(email="fields@example.com")
+    _, token = await create_user(email="searcher3@example.com", phone="+79001112233")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "fields@"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    user = resp.json()[0]
+    assert "id" in user
+    assert "email" in user
+    assert "phone" in user
+    assert "name" in user
+    assert "middle_name" in user
+    assert "surname" in user
+    assert "role" in user
+    assert "created_at" in user
+    assert "profile_photo" in user
+
+
+async def test_search_users_excludes_suspended(client: AsyncClient, create_user: Any) -> None:
+    target, _ = await create_user(email="suspended_target@example.com")
+    await User.filter(id=target["id"]).update(role=UserRole.SUSPENDED)
+    _, token = await create_user(email="searcher4@example.com", phone="+79001112233")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "suspended_target"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 0
+
+
+async def test_search_users_respects_limit(client: AsyncClient, create_user: Any) -> None:
+    for i in range(5):
+        await create_user(email=f"batch{i}@example.com", phone=f"+7900111223{i}")
+    _, token = await create_user(email="searcher5@example.com", phone="+79001112239")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "batch", "limit": 2},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert len(resp.json()) == 2
+
+
+async def test_search_users_min_length(client: AsyncClient, create_user: Any) -> None:
+    _, token = await create_user(email="searcher6@example.com")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "ab"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 422
+
+
+async def test_search_users_no_matches(client: AsyncClient, create_user: Any) -> None:
+    _, token = await create_user(email="searcher7@example.com")
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "zzzzzzzzz"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 200
+    assert resp.json() == []
+
+
+async def test_search_users_requires_auth(client: AsyncClient) -> None:
+    resp = await client.get("/api/v1/users/search", params={"email": "test"})
+    assert resp.status_code == 401
+
+
+async def test_search_users_suspended_caller(client: AsyncClient, create_user: Any) -> None:
+    caller, token = await create_user(email="susp_caller@example.com")
+    await User.filter(id=caller["id"]).update(role=UserRole.SUSPENDED)
+
+    resp = await client.get(
+        "/api/v1/users/search",
+        params={"email": "test"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert resp.status_code == 403
