@@ -3,8 +3,16 @@ from fastapi.responses import JSONResponse
 
 
 class AppError(Exception):
-    def __init__(self, detail: str) -> None:
+    def __init__(
+        self,
+        detail: str,
+        *,
+        code: str = "",
+        params: dict[str, str | int] | None = None,
+    ) -> None:
         self.detail = detail
+        self.code = code
+        self.params: dict[str, str | int] = params or {}
         super().__init__(detail)
 
 
