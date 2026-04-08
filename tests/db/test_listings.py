@@ -610,6 +610,143 @@ class TestListOrgListings:
         assert resp.status_code == 403
 
 
+class TestListOrgListingsFilters:
+    async def test_filter_by_search(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        for name in ["Excavator CAT", "Crane Liebherr", "Bulldozer"]:
+            await client.post(
+                f"/api/v1/organizations/{org_id}/listings/",
+                json={"name": name, "category_id": seed_categories[0].id, "price": 100.0},
+                headers=headers,
+            )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/?search=Excavator",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "Excavator CAT"
+
+    async def test_filter_by_category(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Cat0 Item", "category_id": seed_categories[0].id, "price": 100.0},
+            headers=headers,
+        )
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Cat1 Item", "category_id": seed_categories[1].id, "price": 200.0},
+            headers=headers,
+        )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/?category_id={seed_categories[0].id}",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "Cat0 Item"
+
+    async def test_filter_by_price_range(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Cheap", "category_id": seed_categories[0].id, "price": 50.0},
+            headers=headers,
+        )
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Mid", "category_id": seed_categories[0].id, "price": 150.0},
+            headers=headers,
+        )
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Expensive", "category_id": seed_categories[0].id, "price": 500.0},
+            headers=headers,
+        )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/?price_min=100&price_max=200",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "Mid"
+
+    async def test_filter_by_service_flag(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "With Delivery", "category_id": seed_categories[0].id, "price": 100.0, "delivery": True},
+            headers=headers,
+        )
+        await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "No Delivery", "category_id": seed_categories[0].id, "price": 100.0},
+            headers=headers,
+        )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/?delivery=true",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["name"] == "With Delivery"
+
+    async def test_no_filters_returns_all(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        headers = {"Authorization": f"Bearer {token}"}
+        for name in ["A", "B", "C"]:
+            await client.post(
+                f"/api/v1/organizations/{org_id}/listings/",
+                json={"name": name, "category_id": seed_categories[0].id, "price": 100.0},
+                headers=headers,
+            )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/",
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        assert len(resp.json()["items"]) == 3
+
+
 class TestPublicListings:
     async def test_public_listings_only_published_verified(
         self,
