@@ -2,7 +2,7 @@ from tortoise.expressions import Q
 from tortoise.functions import Count
 
 from app.core.enums import ListingStatus, MediaOwnerType, OrganizationStatus
-from app.core.exceptions import NotFoundError
+from app.core.exceptions import AlreadyExistsError, NotFoundError
 from app.core.identifiers import create_with_short_id
 from app.core.pagination import CursorParams, PaginatedResponse, paginate
 from app.listings.dependencies import ListingFilter
@@ -49,6 +49,9 @@ async def _listing_to_read(listing: Listing, storage: StorageClient) -> ListingR
 
 @traced
 async def create_category(org: Organization, user: User, data: ListingCategoryCreate) -> ListingCategoryRead:
+    exists = await ListingCategory.filter(name=data.name, organization=org).exists()
+    if exists:
+        raise AlreadyExistsError("Category with this name already exists", code="listings.category_name_taken")
     category = await create_with_short_id(
         ListingCategory,
         name=data.name,

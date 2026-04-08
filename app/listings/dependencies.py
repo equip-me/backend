@@ -7,7 +7,7 @@ from app.core.enums import MembershipStatus, OrganizationStatus
 from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.core.security import decode_access_token
 from app.listings.models import Listing
-from app.organizations.dependencies import require_org_editor
+from app.organizations.dependencies import require_org_editor, require_org_member
 from app.organizations.models import Membership, Organization
 from app.users.models import User
 
@@ -28,6 +28,18 @@ async def get_optional_user(
 
 async def resolve_listing(
     membership: Annotated[Membership, Depends(require_org_editor)],
+    listing_id: str = Path(),
+) -> Listing:
+    await membership.fetch_related("organization")
+    org: Organization = membership.organization
+    listing = await Listing.get_or_none(id=listing_id, organization=org).prefetch_related("category")
+    if listing is None:
+        raise NotFoundError("Listing not found", code="listings.not_found")
+    return listing
+
+
+async def resolve_org_listing(
+    membership: Annotated[Membership, Depends(require_org_member)],
     listing_id: str = Path(),
 ) -> Listing:
     await membership.fetch_related("organization")
