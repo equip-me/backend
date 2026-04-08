@@ -393,6 +393,7 @@ Listings from unverified organizations are invisible to non-members. Direct acce
 | DELETE | `/api/v1/organizations/{org_id}/listings/{id}` | Org Editor | Delete listing |
 | PATCH | `/api/v1/organizations/{org_id}/listings/{id}/status` | Org Editor | Change listing status |
 | GET | `/api/v1/organizations/{org_id}/listings/` | Org Member | List organization's listings |
+| GET | `/api/v1/organizations/{org_id}/listings/{id}` | Org Member | Get single listing (org context) |
 | GET | `/api/v1/listings/` | Public | Browse published listings (verified orgs only) |
 | GET | `/api/v1/listings/{id}` | Public | Get single listing |
 | GET | `/api/v1/listings/categories/` | Public | List verified (global) categories |

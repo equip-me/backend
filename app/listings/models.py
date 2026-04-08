@@ -17,6 +17,7 @@ class ListingCategory(Model):
 
     class Meta:
         table = "listing_categories"
+        unique_together = (("name", "organization"),)
 
 
 class Listing(Model):

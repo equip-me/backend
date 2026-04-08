@@ -869,3 +869,104 @@ class TestGetListing:
     ) -> None:
         resp = await client.get("/api/v1/listings/BADID1")
         assert resp.status_code == 404
+
+
+class TestGetOrgListing:
+    async def test_get_org_listing_as_member(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        create_resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Org Item", "category_id": seed_categories[0].id, "price": 200.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        listing_id = create_resp.json()["id"]
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] == listing_id
+        assert body["name"] == "Org Item"
+        assert body["price"] == 200.0
+
+    async def test_get_org_listing_any_status(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        """Members can see listings in any status (hidden, published, archived)."""
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        create_resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Hidden Item", "category_id": seed_categories[0].id, "price": 50.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        listing_id = create_resp.json()["id"]
+        # Listing defaults to hidden — should still be accessible
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "hidden"
+
+    async def test_get_org_listing_denied_for_non_member(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        create_user: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        create_resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Private Item", "category_id": seed_categories[0].id, "price": 100.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        listing_id = create_resp.json()["id"]
+        _, outsider_token = await create_user(email="outsider@example.com")
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}",
+            headers={"Authorization": f"Bearer {outsider_token}"},
+        )
+        assert resp.status_code == 403
+
+    async def test_get_org_listing_denied_without_auth(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        create_resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": "Private Item", "category_id": seed_categories[0].id, "price": 100.0},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        listing_id = create_resp.json()["id"]
+        resp = await client.get(f"/api/v1/organizations/{org_id}/listings/{listing_id}")
+        assert resp.status_code == 401
+
+    async def test_get_org_listing_not_found(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/BADID1",
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 404
