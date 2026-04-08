@@ -38,10 +38,10 @@ class OrderFilter:
         self,
         *,
         status: Annotated[list[OrderStatus] | None, Query()] = None,
-        listing_id: str | None = Query(None),
-        date_from: date | None = Query(None),
-        date_to: date | None = Query(None),
-        search: str | None = Query(None),
+        listing_id: Annotated[str | None, Query()] = None,
+        date_from: Annotated[date | None, Query()] = None,
+        date_to: Annotated[date | None, Query()] = None,
+        search: Annotated[str | None, Query()] = None,
     ) -> None:
         self.statuses = status
         self.listing_id = listing_id

@@ -31,6 +31,33 @@ async def _create_order(
     return cast("dict[str, Any]", resp.json())
 
 
+async def _create_second_listing(
+    client: AsyncClient,
+    org_id: str,
+    org_token: str,
+    seed_categories: list[Any],
+) -> str:
+    """Create a second published listing in the same org. Returns listing_id."""
+    resp = await client.post(
+        f"/api/v1/organizations/{org_id}/listings/",
+        json={
+            "name": "Crane Liebherr LTM",
+            "category_id": seed_categories[0].id,
+            "price": 8000.00,
+        },
+        headers={"Authorization": f"Bearer {org_token}"},
+    )
+    assert resp.status_code == 201
+    listing_id = cast("str", resp.json()["id"])
+    patch_resp = await client.patch(
+        f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
+        json={"status": "published"},
+        headers={"Authorization": f"Bearer {org_token}"},
+    )
+    assert patch_resp.status_code == 200
+    return listing_id
+
+
 @pytest.mark.anyio
 class TestCreateOrder:
     async def test_create_order_success(
@@ -925,3 +952,203 @@ class TestListingSideEffects:
         )
         resp = await client.get(f"/api/v1/listings/{listing_id}")
         assert resp.json()["status"] == "published"
+
+
+@pytest.mark.anyio
+class TestListOrdersFilters:
+    async def test_filter_by_multiple_statuses(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        await _create_order(client, listing_id, renter_token)
+        order2 = await _create_order(client, listing_id, renter_token, start_offset=10)
+
+        # Offer order2 so it becomes "offered"
+        start = _today() + timedelta(days=10)
+        end = start + timedelta(days=5)
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order2['id']}/offer",
+            json={
+                "offered_cost": "30000.00",
+                "offered_start_date": start.isoformat(),
+                "offered_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+
+        resp = await client.get(
+            "/api/v1/orders/?status=pending&status=offered",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 2
+        statuses = {item["status"] for item in items}
+        assert statuses == {"pending", "offered"}
+
+    async def test_filter_by_listing_id(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        seed_categories: list[Any],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        listing2_id = await _create_second_listing(client, org_id, org_token, seed_categories)
+        await _create_order(client, listing_id, renter_token)
+        await _create_order(client, listing2_id, renter_token, start_offset=10)
+
+        resp = await client.get(
+            f"/api/v1/orders/?listing_id={listing_id}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["listing_id"] == listing_id
+
+    async def test_filter_by_date_range_overlap(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        # Order 1: starts in 1 day, ends in 5 days
+        await _create_order(client, listing_id, renter_token, start_offset=1, duration=4)
+        # Order 2: starts in 20 days, ends in 24 days
+        await _create_order(client, listing_id, renter_token, start_offset=20, duration=4)
+
+        # Filter for dates that only overlap with order 1
+        date_from = (_today() + timedelta(days=1)).isoformat()
+        date_to = (_today() + timedelta(days=3)).isoformat()
+        resp = await client.get(
+            f"/api/v1/orders/?date_from={date_from}&date_to={date_to}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+
+    async def test_filter_by_date_from_only(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        # Order 1: starts in 1 day, ends in 5 days
+        await _create_order(client, listing_id, renter_token, start_offset=1, duration=4)
+        # Order 2: starts in 20 days, ends in 24 days
+        await _create_order(client, listing_id, renter_token, start_offset=20, duration=4)
+
+        # date_from after order 1 ends -> only order 2
+        date_from = (_today() + timedelta(days=10)).isoformat()
+        resp = await client.get(
+            f"/api/v1/orders/?date_from={date_from}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+
+    async def test_search_by_order_id(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order1 = await _create_order(client, listing_id, renter_token)
+        await _create_order(client, listing_id, renter_token, start_offset=10)
+
+        resp = await client.get(
+            f"/api/v1/orders/?search={order1['id']}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["id"] == order1["id"]
+
+    async def test_search_by_listing_name(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        seed_categories: list[Any],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        listing2_id = await _create_second_listing(client, org_id, org_token, seed_categories)
+        await _create_order(client, listing_id, renter_token)
+        await _create_order(client, listing2_id, renter_token, start_offset=10)
+
+        # "Excavator" matches "Excavator CAT 320" (first listing)
+        resp = await client.get(
+            "/api/v1/orders/?search=Excavator",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["listing_id"] == listing_id
+
+    async def test_combined_filters(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        seed_categories: list[Any],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        listing2_id = await _create_second_listing(client, org_id, org_token, seed_categories)
+        await _create_order(client, listing_id, renter_token)
+        order2 = await _create_order(client, listing2_id, renter_token, start_offset=10)
+
+        # Offer order2
+        start = _today() + timedelta(days=10)
+        end = start + timedelta(days=5)
+        await client.patch(
+            f"/api/v1/organizations/{org_id}/orders/{order2['id']}/offer",
+            json={
+                "offered_cost": "30000.00",
+                "offered_start_date": start.isoformat(),
+                "offered_end_date": end.isoformat(),
+            },
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+
+        # Filter: status=offered + listing_id=listing2 -> should match order2 only
+        resp = await client.get(
+            f"/api/v1/orders/?status=offered&listing_id={listing2_id}",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["id"] == order2["id"]
+        assert items[0]["status"] == "offered"
+
+    async def test_org_orders_filter_by_listing_id(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        seed_categories: list[Any],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        listing2_id = await _create_second_listing(client, org_id, org_token, seed_categories)
+        await _create_order(client, listing_id, renter_token)
+        await _create_order(client, listing2_id, renter_token, start_offset=10)
+
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/orders/?listing_id={listing_id}",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 1
+        assert items[0]["listing_id"] == listing_id
