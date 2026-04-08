@@ -99,36 +99,46 @@ async def order_sweep_cron(_ctx: dict[Any, Any]) -> None:
     expired_count = 0
     pending_stale = await Order.filter(status=OrderStatus.PENDING, requested_start_date__lt=today)
     for order in pending_stale:
+        old_status = order.status
         order.status = OrderStatus.EXPIRED
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         expired_count += 1
 
     offered_stale = await Order.filter(status=OrderStatus.OFFERED, offered_start_date__lt=today)
     for order in offered_stale:
+        old_status = order.status
         order.status = OrderStatus.EXPIRED
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         expired_count += 1
 
     accepted_stale = await Order.filter(status=OrderStatus.ACCEPTED, offered_start_date__lt=today)
     for order in accepted_stale:
+        old_status = order.status
         order.status = OrderStatus.EXPIRED
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         expired_count += 1
 
     # Activate confirmed orders
     activated_count = 0
     confirmed_ready = await Order.filter(status=OrderStatus.CONFIRMED, offered_start_date__lte=today)
     for order in confirmed_ready:
+        old_status = order.status
         order.status = OrderStatus.ACTIVE
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         activated_count += 1
 
     # Finish active orders
     finished_count = 0
     active_done = await Order.filter(status=OrderStatus.ACTIVE, offered_end_date__lt=today)
     for order in active_done:
+        old_status = order.status
         order.status = OrderStatus.FINISHED
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         finished_count += 1
 
     logger.info(

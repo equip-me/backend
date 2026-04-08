@@ -91,7 +91,7 @@ After creating the two notification rows, broadcast each only to connections mat
 ```json
 {
     "type": "notification",
-    "payload": {
+    "data": {
         "id": "uuid",
         "message_type": "notification",
         "notification_type": "status_changed",
