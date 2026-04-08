@@ -1,7 +1,7 @@
 from datetime import UTC, datetime
 
 from app.chat.models import ChatMessage
-from app.core.enums import OrderStatus
+from app.core.enums import ChatMessageType, ChatSide, NotificationType, OrderStatus
 from app.core.identifiers import generate_short_id
 from app.core.security import hash_password
 from app.orders.models import Order
@@ -106,6 +106,26 @@ class TestChatMessageCRUD:
         messages = await ChatMessage.filter(order=order).all()
         assert messages[0].id == msg2.id
         assert messages[1].id == msg1.id
+
+    async def test_create_notification_message(self) -> None:
+        user = await _create_user()
+        order = await _create_order(user)
+        msg = await ChatMessage.create(
+            order=order,
+            sender=None,
+            message_type=ChatMessageType.NOTIFICATION,
+            notification_type=NotificationType.STATUS_CHANGED,
+            recipient_side=ChatSide.REQUESTER,
+            notification_body={"old_status": "pending", "new_status": "offered"},
+            text=None,
+            media=[],
+        )
+        assert msg.sender_id is None
+        assert msg.message_type == ChatMessageType.NOTIFICATION
+        assert msg.notification_type == NotificationType.STATUS_CHANGED
+        assert msg.recipient_side == ChatSide.REQUESTER
+        assert msg.notification_body == {"old_status": "pending", "new_status": "offered"}
+        assert msg.text is None
 
     async def test_cascade_delete_with_order(self) -> None:
         user = await _create_user()
