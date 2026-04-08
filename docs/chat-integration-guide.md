@@ -150,6 +150,9 @@ Marks all messages up to and including `until_message_id` as read by the current
         "content_type": "image/jpeg"
       }
     ],
+    "message_type": "user",
+    "notification_type": null,
+    "notification_body": null,
     "created_at": "2026-04-01T12:00:00Z",
     "read_at": null
   }
@@ -157,9 +160,33 @@ Marks all messages up to and including `until_message_id` as read by the current
 ```
 
 - `side` — `"requester"` or `"organization"`; use this to decide which bubble side to render
-- `name` — display name of the sender
+- `name` — display name of the sender; `null` for notification messages
 - `media` — empty array if no attachments
+- `message_type` — `"user"` for regular messages, `"notification"` for system notifications
+- `notification_type` — `null` for user messages; `"status_changed"` for order status notifications
+- `notification_body` — `null` for user messages; object with transition details for notifications
 - `read_at` — ISO 8601 timestamp when the other party read the message, or `null`
+
+**Order status notification (system-generated):**
+
+```json
+{
+  "type": "notification",
+  "data": {
+    "id": "550e8400-e29b-41d4-a716-446655440099",
+    "message_type": "notification",
+    "notification_type": "status_changed",
+    "notification_body": {
+      "old_status": "accepted",
+      "new_status": "confirmed"
+    },
+    "created_at": "2026-04-01T14:00:00Z",
+    "read_at": null
+  }
+}
+```
+
+Notification messages are generated automatically when the order status changes. Each side receives only their own notification — the server filters by side. Render these differently from user messages (e.g., centered text with a color accent, no avatar). Notifications count toward `unread_count` and support read receipts like regular messages.
 
 **Typing indicator from the other side:**
 
@@ -252,8 +279,26 @@ Authorization: Bearer {jwt}
       "name": "Иван Петров",
       "text": "Hello, is this equipment available next week?",
       "media": [],
+      "message_type": "user",
+      "notification_type": null,
+      "notification_body": null,
       "created_at": "2026-04-01T12:00:00Z",
       "read_at": "2026-04-01T12:01:00Z"
+    },
+    {
+      "id": "550e8400-e29b-41d4-a716-446655440099",
+      "side": "requester",
+      "name": null,
+      "text": null,
+      "media": [],
+      "message_type": "notification",
+      "notification_type": "status_changed",
+      "notification_body": {
+        "old_status": "pending",
+        "new_status": "offered"
+      },
+      "created_at": "2026-04-01T11:55:00Z",
+      "read_at": null
     }
   ],
   "next_cursor": "eyJpZCI6IjU1MGU4NDAwIn0=",
@@ -262,6 +307,8 @@ Authorization: Bearer {jwt}
 ```
 
 Pass `next_cursor` as the `cursor` query parameter to fetch the previous page. When `has_more` is `false`, you have reached the beginning of the history.
+
+The `items` array may contain both user messages (`message_type: "user"`) and notification messages (`message_type: "notification"`). Each side only receives notifications addressed to them — the server filters automatically based on the endpoint used (requester vs organization).
 
 **Chat status:**
 
@@ -478,7 +525,48 @@ Update the requester's "aaa-111" bubble to show a read tick when the `read` fram
 
 ---
 
-### 8.3 Handling Read-Only State
+### 8.3 Receiving Order Status Notifications
+
+The organization approves an order while both parties are connected. Each side receives their own notification.
+
+```
+REQUESTER                            SERVER                          ORG REP
+  |                                     |                               |
+  |--- WS connect ------------------>   |                               |
+  |<-- connected (active) -----------   |                               |
+  |                                     |   <-- WS connect ------------ |
+  |                                     |   --> connected (active) ----> |
+  |                                     |                               |
+  |                                     |  <-- PATCH /approve --------- |
+  |                                     |                               |
+  |                                     |  [creates 2 notification      |
+  |                                     |   rows: one per side]         |
+  |                                     |                               |
+  |<-- {"type":"notification",          |  --> {"type":"notification",  |
+  |     "data":{                        |       "data":{                |
+  |       "message_type":"notification",|         "message_type":       |
+  |       "notification_type":          |          "notification",      |
+  |        "status_changed",            |         "notification_type":  |
+  |       "notification_body":{         |          "status_changed",    |
+  |         "old_status":"accepted",    |         "notification_body":{ |
+  |         "new_status":"confirmed"},  |          "old_status":        |
+  |       "created_at":"2026-04-01...","|           "accepted",         |
+  |       "read_at":null}}              |          "new_status":        |
+  |                                     |           "confirmed"},       |
+  |  [UI shows status change banner:    |         "created_at":         |
+  |   "Order confirmed"]                |          "2026-04-01...",     |
+  |                                     |         "read_at":null}}      |
+  |                                     |                               |
+  |                                     |  [UI shows status change      |
+  |                                     |   banner: "Order confirmed"]  |
+  |                                     |                               |
+```
+
+Render notifications distinctly from regular messages — for example, as a centered banner with a colored accent. Use `notification_body.new_status` to determine the display text.
+
+---
+
+### 8.4 Handling Read-Only State
 
 An order has been completed. The requester opens the chat and attempts to send a message.
 
