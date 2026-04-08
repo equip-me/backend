@@ -75,13 +75,14 @@ async def change_listing_status(
 async def list_org_listings(
     org_id: str,
     _membership: Annotated[Membership, Depends(require_org_member)],
+    filters: Annotated[ListingFilter, Depends()],
     storage: Annotated[StorageClient, Depends(get_storage)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[ListingRead]:
     """List all listings for the organization regardless of status. Org members only."""
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_org_listings(org_id, storage, params)
+    return await service.list_org_listings(org_id, storage, params, filters)
 
 
 @router.get("/organizations/{org_id}/listings/{listing_id}", response_model=ListingRead)

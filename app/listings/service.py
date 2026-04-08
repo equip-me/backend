@@ -1,5 +1,6 @@
 from tortoise.expressions import Q
 from tortoise.functions import Count
+from tortoise.queryset import QuerySet
 
 from app.core.enums import ListingStatus, MediaOwnerType, OrganizationStatus
 from app.core.exceptions import AlreadyExistsError, NotFoundError
@@ -181,28 +182,7 @@ async def change_listing_status(listing: Listing, status: ListingStatus, storage
     return await _listing_to_read(listing, storage)
 
 
-@traced
-async def list_org_listings(
-    org_id: str,
-    storage: StorageClient,
-    params: CursorParams,
-) -> PaginatedResponse[ListingRead]:
-    qs = Listing.filter(organization_id=org_id).prefetch_related("category")
-    items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
-    listing_reads = [await _listing_to_read(listing, storage) for listing in items]
-    return PaginatedResponse(items=listing_reads, next_cursor=next_cursor, has_more=has_more)
-
-
-@traced
-async def list_public_listings(
-    storage: StorageClient,
-    params: CursorParams,
-    filters: ListingFilter,
-) -> PaginatedResponse[ListingRead]:
-    qs = Listing.filter(
-        status=ListingStatus.PUBLISHED,
-        organization__status=OrganizationStatus.VERIFIED,
-    )
+def _apply_listing_filters(qs: QuerySet[Listing], filters: ListingFilter) -> QuerySet[Listing]:
     if filters.category_ids is not None:
         qs = qs.filter(category_id__in=filters.category_ids)
     if filters.organization_id is not None:
@@ -217,6 +197,38 @@ async def list_public_listings(
         value = getattr(filters, field)
         if value is not None:
             qs = qs.filter(**{field: value})
+    return qs
+
+
+@traced
+async def list_org_listings(
+    org_id: str,
+    storage: StorageClient,
+    params: CursorParams,
+    filters: ListingFilter,
+) -> PaginatedResponse[ListingRead]:
+    qs = Listing.filter(organization_id=org_id)
+    qs = _apply_listing_filters(qs, filters)
+    items, next_cursor, has_more = await paginate(
+        qs.prefetch_related("category"),
+        params,
+        ordering=("-updated_at", "-id"),
+    )
+    listing_reads = [await _listing_to_read(listing, storage) for listing in items]
+    return PaginatedResponse(items=listing_reads, next_cursor=next_cursor, has_more=has_more)
+
+
+@traced
+async def list_public_listings(
+    storage: StorageClient,
+    params: CursorParams,
+    filters: ListingFilter,
+) -> PaginatedResponse[ListingRead]:
+    qs = Listing.filter(
+        status=ListingStatus.PUBLISHED,
+        organization__status=OrganizationStatus.VERIFIED,
+    )
+    qs = _apply_listing_filters(qs, filters)
 
     items, next_cursor, has_more = await paginate(
         qs.prefetch_related("category"),
