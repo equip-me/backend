@@ -633,13 +633,25 @@ The chat switches between **active** (read-write) and **read-only** modes based 
 | Order in terminal status AND within cooldown period | Active (read-write) |
 | Order in terminal status AND cooldown period expired | Read-only |
 
-### 6.5 Messages
+### 6.5 Message Types
+
+#### User Messages
 
 - **Immutable** — no editing, no deletion.
 - A message must contain text, attachments, or both.
 - **Max text length:** 4 000 characters.
 - **Max attachments per message:** 10.
 - **Rate limit:** 30 messages per minute per connection.
+
+#### Notification Messages
+
+System-generated messages created on every order status transition. Both sides receive a separate notification message — each side only sees their own.
+
+- **Trigger:** every call to `_record_transition` (human-triggered and automated transitions, including sweep cron).
+- **Content:** `notification_body` contains `{"old_status": "...", "new_status": "..."}`. No sender, no text, no media.
+- **Read tracking:** each side has their own notification row with independent `read_at`. Notifications count toward unread count.
+- **Delivery:** persisted to DB and broadcast via Redis pub/sub with side filtering.
+- **Display:** frontend renders these with distinct visual treatment (e.g., color accent).
 
 ### 6.6 Media Attachments
 
