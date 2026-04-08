@@ -1,8 +1,10 @@
+from datetime import date
 from typing import Annotated
 
-from fastapi import Depends, Path
+from fastapi import Depends, Path, Query
 
 from app.core.dependencies import require_active_user
+from app.core.enums import OrderStatus
 from app.core.exceptions import NotFoundError, PermissionDeniedError
 from app.orders.models import Order
 from app.users.models import User
@@ -29,3 +31,20 @@ async def get_org_order_or_404(org_id: str = Path(), order_id: str = Path()) -> 
     if order is None:
         raise NotFoundError("Order not found", code="orders.not_found")
     return order
+
+
+class OrderFilter:
+    def __init__(
+        self,
+        *,
+        status: Annotated[list[OrderStatus] | None, Query()] = None,
+        listing_id: Annotated[str | None, Query()] = None,
+        date_from: Annotated[date | None, Query()] = None,
+        date_to: Annotated[date | None, Query()] = None,
+        search: Annotated[str | None, Query()] = None,
+    ) -> None:
+        self.statuses = status
+        self.listing_id = listing_id
+        self.date_from = date_from
+        self.date_to = date_to
+        self.search = search
