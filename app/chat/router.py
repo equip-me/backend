@@ -23,7 +23,7 @@ async def get_user_chat_messages(
 ) -> PaginatedResponse[MessageRead]:
     order, _user = participant
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.get_messages(order, params)
+    return await service.get_messages(order, params, side="requester")
 
 
 @router.get("/orders/{order_id}/chat/status", response_model=ChatStatusResponse)
@@ -48,7 +48,7 @@ async def get_org_chat_messages(
 ) -> PaginatedResponse[MessageRead]:
     order, _user = participant
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.get_messages(order, params)
+    return await service.get_messages(order, params, side="organization")
 
 
 @router.get(

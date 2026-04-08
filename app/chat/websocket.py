@@ -214,7 +214,8 @@ async def _listen_client(  # noqa: PLR0912
             if not until_id:
                 continue
             try:
-                await service.mark_messages_read(order.id, user.id, until_id)
+                side = _get_side(user, order)
+                await service.mark_messages_read(order.id, user.id, until_id, side=side)
             except Exception:  # noqa: BLE001
                 logger.warning("Failed to mark messages as read", exc_info=True)
                 continue

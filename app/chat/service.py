@@ -3,10 +3,12 @@ from datetime import UTC, datetime, timedelta
 from typing import Any
 from uuid import UUID
 
+from tortoise.expressions import Q
+
 from app.chat.models import ChatMessage
 from app.chat.schemas import ChatStatusResponse, MediaAttachmentRead, MessageRead
 from app.core.config import get_settings
-from app.core.enums import MediaOwnerType, MediaStatus, OrderStatus
+from app.core.enums import ChatMessageType, MediaOwnerType, MediaStatus, OrderStatus
 from app.core.exceptions import AppValidationError, NotFoundError, PermissionDeniedError
 from app.core.pagination import CursorParams, PaginatedResponse, paginate
 from app.media.models import Media
@@ -85,6 +87,19 @@ async def _to_message_read(
     order: Order,
     storage: StorageClient,
 ) -> MessageRead:
+    if msg.message_type == ChatMessageType.NOTIFICATION:
+        return MessageRead(
+            id=msg.id,
+            side=msg.recipient_side.value if msg.recipient_side else "requester",
+            name=None,
+            text=None,
+            media=[],
+            message_type=msg.message_type,
+            notification_type=msg.notification_type,
+            notification_body=msg.notification_body,
+            created_at=msg.created_at,
+            read_at=msg.read_at,
+        )
     sender: User = msg.sender
     side = _get_side(sender, order)
     name = await _get_author_name(sender, order)
@@ -96,8 +111,8 @@ async def _to_message_read(
         text=msg.text,
         media=media,
         message_type=msg.message_type,
-        notification_type=msg.notification_type,
-        notification_body=msg.notification_body,
+        notification_type=None,
+        notification_body=None,
         created_at=msg.created_at,
         read_at=msg.read_at,
     )
@@ -105,7 +120,12 @@ async def _to_message_read(
 
 async def compute_chat_status_for_order(order: Order, user: User) -> ChatStatusResponse:
     settings = get_settings()
-    last_msg = await ChatMessage.filter(order_id=order.id).order_by("-created_at").first()
+    side = _get_side(user, order)
+    last_msg = (
+        await ChatMessage.filter(Q(order_id=order.id) & (Q(recipient_side__isnull=True) | Q(recipient_side=side)))
+        .order_by("-created_at")
+        .first()
+    )
     last_message_at = last_msg.created_at if last_msg else None
     status = get_chat_status(
         order_status=OrderStatus(order.status),
@@ -115,7 +135,7 @@ async def compute_chat_status_for_order(order: Order, user: User) -> ChatStatusR
     )
     unread_count = (
         await ChatMessage.filter(
-            order_id=order.id,
+            Q(order_id=order.id) & (Q(recipient_side__isnull=True) | Q(recipient_side=side)),
             read_at=None,
         )
         .exclude(sender_id=user.id)
@@ -212,8 +232,12 @@ async def send_message(
 async def get_messages(
     order: Order,
     params: CursorParams,
+    *,
+    side: str,
 ) -> PaginatedResponse[MessageRead]:
-    qs = ChatMessage.filter(order_id=order.id).prefetch_related("sender")
+    qs = ChatMessage.filter(
+        Q(order_id=order.id) & (Q(recipient_side__isnull=True) | Q(recipient_side=side))
+    ).prefetch_related("sender")
     items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
 
     storage = get_storage()
@@ -222,14 +246,14 @@ async def get_messages(
     return PaginatedResponse(items=reads, next_cursor=next_cursor, has_more=has_more)
 
 
-async def mark_messages_read(order_id: str, user_id: str, until_message_id: str) -> int:
+async def mark_messages_read(order_id: str, user_id: str, until_message_id: str, *, side: str) -> int:
     until_msg = await ChatMessage.get_or_none(id=until_message_id, order_id=order_id)
     if until_msg is None:
         raise NotFoundError("Message not found", code="chat.message_not_found")
 
     count: int = (
         await ChatMessage.filter(
-            order_id=order_id,
+            Q(order_id=order_id) & (Q(recipient_side__isnull=True) | Q(recipient_side=side)),
             read_at=None,
             created_at__lte=until_msg.created_at,
         )
