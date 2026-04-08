@@ -247,7 +247,6 @@ async def attach_listing_media(
     photo_ids: list[UUID],
     video_ids: list[UUID],
     document_ids: list[UUID],
-    user: User,
     storage: StorageClient,
 ) -> None:
     """Attach media to a listing. Detaches all current media first (removed ones become orphans)."""
@@ -286,12 +285,9 @@ async def attach_listing_media(
         *[(did, MediaKind.DOCUMENT) for did in document_ids],
     ]
     for position, (media_id, expected_kind) in enumerate(all_ids_with_kind):
-        media = await Media.get_or_none(id=media_id).prefetch_related("uploaded_by")
+        media = await Media.get_or_none(id=media_id)
         if media is None:
             raise NotFoundError(f"Media {media_id} not found", code="media.not_found")
-        uploader: User = media.uploaded_by
-        if uploader.id != user.id:
-            raise PermissionDeniedError("You can only manage your own uploads", code="media.not_uploader")
         if media.status != MediaStatus.READY:
             raise AppValidationError(
                 f"Media {media_id} is not ready",

@@ -1064,7 +1064,7 @@ async def test_attach_listing_media_not_ready(
     assert resp.status_code == 400
 
 
-async def test_attach_listing_media_wrong_uploader(
+async def test_attach_listing_media_uploaded_by_other_org_member(
     client: AsyncClient,
     verified_org: tuple[dict[str, str], str],
     seed_categories: list[Any],
@@ -1074,21 +1074,21 @@ async def test_attach_listing_media_wrong_uploader(
     org_id = org_data["id"]
     category_id = seed_categories[0].id
 
-    # Create a photo uploaded by a different user
+    # Create a photo uploaded by a different user — org editors can attach any media
     other_data, _ = await create_user(email="other-uploader@example.com", phone="+79009998877")
     photo_id = await _create_ready_photo(other_data["id"], "listing")
 
     resp = await client.post(
         f"/api/v1/organizations/{org_id}/listings/",
         json={
-            "name": "Wrong uploader test",
+            "name": "Other uploader test",
             "category_id": category_id,
             "price": 1000.00,
             "photo_ids": [str(photo_id)],
         },
         headers={"Authorization": f"Bearer {token}"},
     )
-    assert resp.status_code == 403
+    assert resp.status_code == 201
 
 
 # ── Listing media: video and document branches ───────────

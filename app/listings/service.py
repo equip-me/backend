@@ -125,7 +125,6 @@ async def create_listing(org: Organization, user: User, data: ListingCreate, sto
             data.photo_ids,
             data.video_ids,
             data.document_ids,
-            user,
             storage,
         )
 
@@ -135,7 +134,7 @@ async def create_listing(org: Organization, user: User, data: ListingCreate, sto
 
 @traced
 async def update_listing(
-    listing: Listing, org: Organization, data: ListingUpdate, user: User, storage: StorageClient
+    listing: Listing, org: Organization, data: ListingUpdate, storage: StorageClient
 ) -> ListingRead:
     update_data = data.model_dump(exclude_unset=True)
 
@@ -159,7 +158,6 @@ async def update_listing(
             data.photo_ids if data.photo_ids is not None else [],
             data.video_ids if data.video_ids is not None else [],
             data.document_ids if data.document_ids is not None else [],
-            user,
             storage,
         )
 
