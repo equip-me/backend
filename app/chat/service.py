@@ -95,6 +95,9 @@ async def _to_message_read(
         name=name,
         text=msg.text,
         media=media,
+        message_type=msg.message_type,
+        notification_type=msg.notification_type,
+        notification_body=msg.notification_body,
         created_at=msg.created_at,
         read_at=msg.read_at,
     )
