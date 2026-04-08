@@ -79,3 +79,17 @@ class MediaStatus(StrEnum):
     PROCESSING = "processing"
     READY = "ready"
     FAILED = "failed"
+
+
+class ChatMessageType(StrEnum):
+    USER = "user"
+    NOTIFICATION = "notification"
+
+
+class NotificationType(StrEnum):
+    STATUS_CHANGED = "status_changed"
+
+
+class ChatSide(StrEnum):
+    REQUESTER = "requester"
+    ORGANIZATION = "organization"
