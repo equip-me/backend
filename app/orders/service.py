@@ -1,6 +1,9 @@
 from datetime import UTC, datetime
 from decimal import ROUND_HALF_UP, Decimal
 
+from tortoise.expressions import Q
+from tortoise.queryset import QuerySet
+
 from app.core.enums import ListingStatus, OrderAction, OrderStatus, OrganizationStatus
 from app.core.exceptions import AppValidationError, NotFoundError, PermissionDeniedError
 from app.core.identifiers import create_with_short_id
@@ -9,6 +12,7 @@ from app.listings.models import Listing
 from app.observability.events import emit_event
 from app.observability.metrics import order_transitions, orders_created
 from app.observability.tracing import traced
+from app.orders.dependencies import OrderFilter
 from app.orders.models import Order
 from app.orders.schemas import OrderCreate, OrderOffer, OrderRead
 from app.orders.state_machine import transition
@@ -166,15 +170,28 @@ async def get_order(order: Order) -> OrderRead:
     return OrderRead.model_validate(order)
 
 
+def _apply_order_filters(qs: QuerySet[Order], filters: OrderFilter) -> QuerySet[Order]:
+    if filters.statuses:
+        qs = qs.filter(status__in=filters.statuses)
+    if filters.listing_id is not None:
+        qs = qs.filter(listing_id=filters.listing_id)
+    if filters.date_from is not None:
+        qs = qs.filter(requested_end_date__gte=filters.date_from)
+    if filters.date_to is not None:
+        qs = qs.filter(requested_start_date__lte=filters.date_to)
+    if filters.search:
+        qs = qs.filter(Q(id__icontains=filters.search) | Q(listing__name__icontains=filters.search))
+    return qs
+
+
 @traced
 async def list_user_orders(
     user: User,
     params: CursorParams,
-    status: OrderStatus | None = None,
+    filters: OrderFilter,
 ) -> PaginatedResponse[OrderRead]:
     qs = Order.filter(requester=user)
-    if status:
-        qs = qs.filter(status=status)
+    qs = _apply_order_filters(qs, filters)
     items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
     order_reads = [OrderRead.model_validate(order) for order in items]
     return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)
@@ -184,11 +201,10 @@ async def list_user_orders(
 async def list_org_orders(
     org_id: str,
     params: CursorParams,
-    status: OrderStatus | None = None,
+    filters: OrderFilter,
 ) -> PaginatedResponse[OrderRead]:
     qs = Order.filter(organization_id=org_id)
-    if status:
-        qs = qs.filter(status=status)
+    qs = _apply_order_filters(qs, filters)
     items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
     order_reads = [OrderRead.model_validate(order) for order in items]
     return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)
