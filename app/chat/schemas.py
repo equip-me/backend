@@ -3,6 +3,8 @@ from uuid import UUID
 
 from pydantic import BaseModel
 
+from app.core.enums import ChatMessageType, NotificationType
+
 
 class MediaAttachmentRead(BaseModel):
     id: str
@@ -15,9 +17,12 @@ class MediaAttachmentRead(BaseModel):
 class MessageRead(BaseModel):
     id: UUID
     side: str
-    name: str
+    name: str | None
     text: str | None
     media: list[MediaAttachmentRead]
+    message_type: ChatMessageType
+    notification_type: NotificationType | None
+    notification_body: dict[str, str] | None
     created_at: datetime
     read_at: datetime | None
 

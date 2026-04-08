@@ -1,7 +1,9 @@
 from datetime import UTC, datetime
 
+from tortoise.expressions import Q
+
 from app.chat.models import ChatMessage
-from app.core.enums import OrderStatus
+from app.core.enums import ChatMessageType, ChatSide, NotificationType, OrderStatus
 from app.core.identifiers import generate_short_id
 from app.core.security import hash_password
 from app.orders.models import Order
@@ -107,6 +109,26 @@ class TestChatMessageCRUD:
         assert messages[0].id == msg2.id
         assert messages[1].id == msg1.id
 
+    async def test_create_notification_message(self) -> None:
+        user = await _create_user()
+        order = await _create_order(user)
+        msg = await ChatMessage.create(
+            order=order,
+            sender=None,
+            message_type=ChatMessageType.NOTIFICATION,
+            notification_type=NotificationType.STATUS_CHANGED,
+            recipient_side=ChatSide.REQUESTER,
+            notification_body={"old_status": "pending", "new_status": "offered"},
+            text=None,
+            media=[],
+        )
+        assert msg.sender_id is None
+        assert msg.message_type == ChatMessageType.NOTIFICATION
+        assert msg.notification_type == NotificationType.STATUS_CHANGED
+        assert msg.recipient_side == ChatSide.REQUESTER
+        assert msg.notification_body == {"old_status": "pending", "new_status": "offered"}
+        assert msg.text is None
+
     async def test_cascade_delete_with_order(self) -> None:
         user = await _create_user()
         order = await _create_order(user)
@@ -115,3 +137,47 @@ class TestChatMessageCRUD:
         assert await ChatMessage.filter(order=order).count() == 1
         await order.delete()
         assert await ChatMessage.filter(order_id=order.id).count() == 0
+
+    async def test_get_messages_filters_by_side(self) -> None:
+        """Notification messages are only visible to their recipient side."""
+        user = await _create_user("side_filter@test.com")
+        order = await _create_order(user)
+
+        # Regular message (visible to both)
+        await ChatMessage.create(order=order, sender=user, text="Hello", media=[])
+
+        # Notification for requester only
+        await ChatMessage.create(
+            order=order,
+            sender=None,
+            message_type=ChatMessageType.NOTIFICATION,
+            notification_type=NotificationType.STATUS_CHANGED,
+            recipient_side=ChatSide.REQUESTER,
+            notification_body={"old_status": "pending", "new_status": "offered"},
+            text=None,
+            media=[],
+        )
+
+        # Notification for organization only
+        await ChatMessage.create(
+            order=order,
+            sender=None,
+            message_type=ChatMessageType.NOTIFICATION,
+            notification_type=NotificationType.STATUS_CHANGED,
+            recipient_side=ChatSide.ORGANIZATION,
+            notification_body={"old_status": "pending", "new_status": "offered"},
+            text=None,
+            media=[],
+        )
+
+        # Requester sees regular + their notification = 2
+        requester_msgs = await ChatMessage.filter(
+            Q(order_id=order.id) & (Q(recipient_side__isnull=True) | Q(recipient_side=ChatSide.REQUESTER))
+        )
+        assert len(requester_msgs) == 2
+
+        # Organization sees regular + their notification = 2
+        org_msgs = await ChatMessage.filter(
+            Q(order_id=order.id) & (Q(recipient_side__isnull=True) | Q(recipient_side=ChatSide.ORGANIZATION))
+        )
+        assert len(org_msgs) == 2

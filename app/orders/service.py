@@ -20,9 +20,12 @@ from app.reservations import service as reservation_service
 from app.users.models import User
 
 
-def _record_transition(order_id: str, old_status: OrderStatus, new_status: OrderStatus) -> None:
+async def _record_transition(order_id: str, old_status: OrderStatus, new_status: OrderStatus) -> None:
     order_transitions.add(1, {"from_status": old_status.value, "to_status": new_status.value})
     emit_event("order.status_changed", order_id=order_id, old_status=old_status.value, new_status=new_status.value)
+    from app.chat.notifications import create_status_notification
+
+    await create_status_notification(order_id=order_id, old_status=old_status, new_status=new_status)
 
 
 async def _schedule_expire_job(order: Order, expire_date: datetime) -> None:
@@ -103,7 +106,7 @@ async def offer_order(order: Order, data: OrderOffer) -> OrderRead:
     order.offered_start_date = data.offered_start_date
     order.offered_end_date = data.offered_end_date
     await order.save()
-    _record_transition(order.id, old_status, new_status)
+    await _record_transition(order.id, old_status, new_status)
 
     expire_at = datetime.combine(data.offered_start_date, datetime.min.time(), tzinfo=UTC)
     await _schedule_expire_job(order, expire_at)
@@ -116,7 +119,7 @@ async def accept_order(order: Order) -> OrderRead:
     old_status = order.status
     order.status = transition(order.status, OrderAction.ACCEPT_BY_USER)
     await order.save()
-    _record_transition(order.id, old_status, order.status)
+    await _record_transition(order.id, old_status, order.status)
     return OrderRead.model_validate(order)
 
 
@@ -136,7 +139,7 @@ async def approve_order(order: Order) -> OrderRead:
     )
 
     await order.save()
-    _record_transition(order.id, old_status, order.status)
+    await _record_transition(order.id, old_status, order.status)
 
     await _schedule_activate_job(order)
 
@@ -151,7 +154,7 @@ async def _cancel_order(order: Order, action: OrderAction) -> OrderRead:
     if old_status in (OrderStatus.CONFIRMED, OrderStatus.ACTIVE):
         await reservation_service.delete_reservation_by_order(order.id)
 
-    _record_transition(order.id, old_status, order.status)
+    await _record_transition(order.id, old_status, order.status)
     return OrderRead.model_validate(order)
 
 
