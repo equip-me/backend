@@ -5,6 +5,7 @@ from typing import Any
 from app.core.enums import OrderAction, OrderStatus
 from app.core.exceptions import AppValidationError
 from app.orders.models import Order
+from app.orders.service import _record_transition
 from app.orders.state_machine import transition
 
 logger = logging.getLogger(__name__)
@@ -34,6 +35,7 @@ async def expire_order(_ctx: dict[str, Any], order_id: str) -> None:
         old_status = order.status
         order.status = transition(order.status, OrderAction.EXPIRE)
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         logger.info("Expired order %s: %s → %s", order_id, old_status.value, order.status.value)
     except AppValidationError:
         logger.warning("expire_order: cannot expire order %s in status %s", order_id, order.status.value)
@@ -52,6 +54,7 @@ async def activate_order(_ctx: dict[str, Any], order_id: str) -> None:
         old_status = order.status
         order.status = transition(order.status, OrderAction.ACTIVATE)
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         logger.info("Activated order %s: %s → %s", order_id, old_status.value, order.status.value)
 
         # Schedule finish job
@@ -81,6 +84,7 @@ async def finish_order(_ctx: dict[str, Any], order_id: str) -> None:
         old_status = order.status
         order.status = transition(order.status, OrderAction.FINISH)
         await order.save()
+        await _record_transition(order.id, old_status, order.status)
         logger.info("Finished order %s: %s → %s", order_id, old_status.value, order.status.value)
     except AppValidationError:
         logger.warning("finish_order: cannot finish order %s in status %s", order_id, order.status.value)

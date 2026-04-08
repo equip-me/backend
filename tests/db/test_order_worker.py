@@ -128,3 +128,63 @@ class TestOrderSweepCron:
 
         order = await Order.get(id=pending_order.id)
         assert order.status == OrderStatus.FINISHED
+
+
+class TestWorkerNotifications:
+    async def test_expire_creates_notifications(self, pending_order: Order) -> None:
+        await expire_order(_empty_ctx(), pending_order.id)
+        from app.chat.models import ChatMessage
+        from app.core.enums import ChatMessageType
+
+        count = await ChatMessage.filter(
+            order_id=pending_order.id,
+            message_type=ChatMessageType.NOTIFICATION,
+        ).count()
+        assert count == 2
+
+    async def test_activate_creates_notifications(self, pending_order: Order) -> None:
+        from datetime import UTC, datetime
+        from decimal import Decimal
+
+        from app.core.enums import OrderAction
+        from app.orders.state_machine import transition
+
+        pending_order.status = transition(pending_order.status, OrderAction.OFFER_BY_ORG)
+        pending_order.offered_start_date = datetime.now(UTC).date()
+        pending_order.offered_end_date = datetime.now(UTC).date()
+        pending_order.offered_cost = Decimal(5000)
+        await pending_order.save()
+        pending_order.status = transition(pending_order.status, OrderAction.ACCEPT_BY_USER)
+        await pending_order.save()
+        pending_order.status = transition(pending_order.status, OrderAction.APPROVE_BY_ORG)
+        await pending_order.save()
+
+        await activate_order(_empty_ctx(), pending_order.id)
+
+        from app.chat.models import ChatMessage
+        from app.core.enums import ChatMessageType
+
+        notifs = await ChatMessage.filter(
+            order_id=pending_order.id,
+            message_type=ChatMessageType.NOTIFICATION,
+        )
+        activate_notifs = [n for n in notifs if n.notification_body.get("new_status") == "active"]
+        assert len(activate_notifs) == 2
+
+    async def test_finish_creates_notifications(self, pending_order: Order) -> None:
+        from app.core.enums import OrderStatus
+
+        pending_order.status = OrderStatus.ACTIVE
+        await pending_order.save()
+
+        await finish_order(_empty_ctx(), pending_order.id)
+
+        from app.chat.models import ChatMessage
+        from app.core.enums import ChatMessageType
+
+        notifs = await ChatMessage.filter(
+            order_id=pending_order.id,
+            message_type=ChatMessageType.NOTIFICATION,
+        )
+        finish_notifs = [n for n in notifs if n.notification_body.get("new_status") == "finished"]
+        assert len(finish_notifs) == 2
