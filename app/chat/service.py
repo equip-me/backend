@@ -133,14 +133,12 @@ async def compute_chat_status_for_order(order: Order, user: User) -> ChatStatusR
         last_message_at=last_message_at,
         cooldown_days=settings.chat.cooldown_days,
     )
-    unread_count = (
-        await ChatMessage.filter(
-            Q(order_id=order.id) & (Q(recipient_side__isnull=True) | Q(recipient_side=side)),
-            read_at=None,
-        )
-        .exclude(sender_id=user.id)
-        .count()
-    )
+    unread_count = await ChatMessage.filter(
+        Q(order_id=order.id)
+        & (Q(recipient_side__isnull=True) | Q(recipient_side=side))
+        & (Q(sender_id__isnull=True) | ~Q(sender_id=user.id)),
+        read_at=None,
+    ).count()
     return ChatStatusResponse(status=status, unread_count=unread_count)
 
 
@@ -251,14 +249,12 @@ async def mark_messages_read(order_id: str, user_id: str, until_message_id: str,
     if until_msg is None:
         raise NotFoundError("Message not found", code="chat.message_not_found")
 
-    count: int = (
-        await ChatMessage.filter(
-            Q(order_id=order_id) & (Q(recipient_side__isnull=True) | Q(recipient_side=side)),
-            read_at=None,
-            created_at__lte=until_msg.created_at,
-        )
-        .exclude(sender_id=user_id)
-        .update(read_at=datetime.now(tz=UTC))
-    )
+    count: int = await ChatMessage.filter(
+        Q(order_id=order_id)
+        & (Q(recipient_side__isnull=True) | Q(recipient_side=side))
+        & (Q(sender_id__isnull=True) | ~Q(sender_id=user_id)),
+        read_at=None,
+        created_at__lte=until_msg.created_at,
+    ).update(read_at=datetime.now(tz=UTC))
 
     return count

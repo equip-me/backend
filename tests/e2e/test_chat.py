@@ -47,7 +47,10 @@ class TestChatRESTEndpoints:
         )
         assert resp.status_code == 200
         data = resp.json()
-        assert data["items"] == []
+        # After order creation the fixture offers it, so notification messages exist.
+        # Assert that there are no user-authored messages yet.
+        user_messages = [m for m in data["items"] if m["message_type"] == "user"]
+        assert user_messages == []
         assert data["has_more"] is False
 
     async def test_get_chat_status_active(
@@ -63,7 +66,8 @@ class TestChatRESTEndpoints:
         assert resp.status_code == 200
         data = resp.json()
         assert data["status"] == "active"
-        assert data["unread_count"] == 0
+        # The fixture offers the order creating a notification that is unread by the renter.
+        assert data["unread_count"] >= 1
 
     async def test_get_messages_not_participant(
         self,
@@ -145,7 +149,9 @@ class TestChatRESTEndpoints:
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
-        assert resp.json()["items"] == []
+        # The fixture offers the order creating a notification for the org side.
+        user_messages = [m for m in resp.json()["items"] if m["message_type"] == "user"]
+        assert user_messages == []
 
     async def test_get_org_chat_status(
         self,
@@ -319,6 +325,11 @@ class TestChatWebSocket:
             "UPDATE orders SET updated_at = updated_at - interval '30 days' WHERE id = $1",
             [order_id],
         )
+        # Back-date any notification messages so they don't extend the cooldown window.
+        await conn.execute_query(
+            "UPDATE chat_messages SET created_at = created_at - interval '30 days' WHERE order_id = $1",
+            [order_id],
+        )
 
         async with make_ws_client() as wsc:
             ws: AsyncWebSocketSession
@@ -357,9 +368,10 @@ class TestChatWebSocket:
         )
         assert resp.status_code == 200
         items = resp.json()["items"]
-        assert len(items) == 1
-        assert items[0]["text"] == "Persisted!"
-        assert items[0]["side"] == "requester"
+        user_messages = [m for m in items if m["message_type"] == "user"]
+        assert len(user_messages) == 1
+        assert user_messages[0]["text"] == "Persisted!"
+        assert user_messages[0]["side"] == "requester"
 
     async def test_unread_count(
         self,
@@ -385,14 +397,16 @@ class TestChatWebSocket:
             headers={"Authorization": f"Bearer {org_token}"},
         )
         assert resp.status_code == 200
-        assert resp.json()["unread_count"] == 2
+        # Org sees: 2 user messages from renter + 1 notification from fixture offer.
+        assert resp.json()["unread_count"] == 3
 
         resp = await client.get(
             f"/api/v1/orders/{order_id}/chat/status",
             headers={"Authorization": f"Bearer {renter_token}"},
         )
         assert resp.status_code == 200
-        assert resp.json()["unread_count"] == 0
+        # Renter sees: 1 unread notification from the fixture offer (renter is not the sender).
+        assert resp.json()["unread_count"] == 1
 
     async def test_message_validation_empty(
         self,
@@ -552,6 +566,7 @@ class TestChatWebSocket:
         order_id, _org_id, org_token, renter_token = create_order_for_chat
 
         org_q: asyncio.Queue[dict[str, Any]] = asyncio.Queue()
+        org_ready = asyncio.Event()
         org_received = asyncio.Event()
 
         async def renter_session() -> None:
@@ -559,6 +574,9 @@ class TestChatWebSocket:
                 ws: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={renter_token}", wsc) as ws:
                     await ws_receive(ws)  # connected
+                    # Wait for org to subscribe before sending typing so the broadcast is not missed.
+                    async with asyncio.timeout(_WS_TIMEOUT):
+                        await org_ready.wait()
                     await ws.send_json({"type": "typing", "is_typing": True})
                     async with asyncio.timeout(_WS_TIMEOUT):
                         await org_received.wait()
@@ -568,6 +586,7 @@ class TestChatWebSocket:
                 ws2: AsyncWebSocketSession
                 async with aconnect_ws(f"/api/v1/orders/{order_id}/chat/ws?token={org_token}", wsc) as ws2:
                     await ws_receive(ws2)  # connected
+                    org_ready.set()
                     msg = await ws_receive(ws2)
                     org_q.put_nowait(msg)
                     org_received.set()
@@ -740,9 +759,10 @@ class TestChatWebSocket:
         )
         assert resp.status_code == 200
         items = resp.json()["items"]
-        assert len(items) == 1
-        assert len(items[0]["media"]) == 1
-        assert "thumbnail" in items[0]["media"][0]["urls"]
+        user_messages = [m for m in items if m["message_type"] == "user"]
+        assert len(user_messages) == 1
+        assert len(user_messages[0]["media"]) == 1
+        assert "thumbnail" in user_messages[0]["media"][0]["urls"]
 
     async def test_message_with_unready_media(
         self,
