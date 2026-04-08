@@ -33,7 +33,7 @@ services:
 
   # ── Application ────────────────────────────────────────
   app:
-    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    image: ghcr.io/khamitovdr/rental-platform:0.18.0
     restart: unless-stopped
     environment:
       APP_ENV: prod
@@ -69,7 +69,7 @@ services:
       - internal
 
   worker:
-    image: ghcr.io/khamitovdr/rental-platform:${APP_VERSION}
+    image: ghcr.io/khamitovdr/rental-platform:0.18.0
     restart: unless-stopped
     environment:
       APP_ENV: prod
