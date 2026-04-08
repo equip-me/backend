@@ -44,10 +44,9 @@ async def update_listing(
     membership: Annotated[Membership, Depends(require_org_editor)],
     storage: Annotated[StorageClient, Depends(get_storage)],
 ) -> ListingRead:
-    await membership.fetch_related("organization", "user")
+    await membership.fetch_related("organization")
     org: Organization = membership.organization
-    user: User = membership.user
-    return await service.update_listing(listing, org, data, user, storage)
+    return await service.update_listing(listing, org, data, storage)
 
 
 @router.delete("/organizations/{org_id}/listings/{listing_id}", status_code=204)
