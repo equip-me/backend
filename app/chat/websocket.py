@@ -46,19 +46,19 @@ class RateLimiter:
 # --- Connection Registry ---
 
 
-_connections: dict[str, set[tuple[str, WebSocket]]] = {}
+_connections: dict[str, set[tuple[str, str, WebSocket]]] = {}
 
 
-def _add_connection(order_id: str, user_id: str, ws: WebSocket) -> None:
+def _add_connection(order_id: str, user_id: str, side: str, ws: WebSocket) -> None:
     if order_id not in _connections:
         _connections[order_id] = set()
-    _connections[order_id].add((user_id, ws))
+    _connections[order_id].add((user_id, side, ws))
 
 
-def _remove_connection(order_id: str, user_id: str, ws: WebSocket) -> None:
+def _remove_connection(order_id: str, user_id: str, side: str, ws: WebSocket) -> None:
     conns = _connections.get(order_id)
     if conns:
-        conns.discard((user_id, ws))
+        conns.discard((user_id, side, ws))
         if not conns:
             del _connections[order_id]
 
@@ -98,15 +98,19 @@ def _get_side(user: User, order: Order) -> str:
 # --- Redis Listener ---
 
 
-async def _listen_redis(pubsub: PubSub, ws: WebSocket, user_id: str) -> None:
+async def _listen_redis(pubsub: PubSub, ws: WebSocket, user_id: str, side: str) -> None:
     async for raw_message in pubsub.listen():
         if raw_message["type"] != "message":
             continue
         payload: dict[str, Any] = json.loads(raw_message["data"])
         sender_id = payload.pop("_sender_id", None)
+        recipient_side = payload.pop("_recipient_side", None)
         msg_type = payload.get("type")
         # Don't echo typing/read back to the sender
         if msg_type in ("typing", "read") and sender_id == user_id:
+            continue
+        # Filter notifications by side
+        if recipient_side is not None and recipient_side != side:
             continue
         await ws.send_json(payload)
 
@@ -251,25 +255,26 @@ async def chat_websocket(websocket: WebSocket, order_id: str, token: str | None 
 
     await websocket.accept()
 
+    side = _get_side(user, order)
     settings = get_settings()
     status_resp = await service.compute_chat_status_for_order(order, user)
     chat_active = status_resp.status == "active"
     await websocket.send_json({"type": "connected", "data": {"chat_status": status_resp.status}})
 
-    _add_connection(order_id, user.id, websocket)
+    _add_connection(order_id, user.id, side, websocket)
     pubsub = await subscribe(f"chat:{order_id}")
     rate_limiter = RateLimiter(max_per_minute=settings.chat.rate_limit_per_minute)
 
     try:
         async with asyncio.TaskGroup() as tg:
-            tg.create_task(_listen_redis(pubsub, websocket, user.id))
+            tg.create_task(_listen_redis(pubsub, websocket, user.id, side))
             tg.create_task(_listen_client(websocket, order, user, rate_limiter, chat_active=chat_active))
     except* WebSocketDisconnect:
         pass
     except* Exception:  # noqa: BLE001
         logger.warning("WebSocket error for order %s", order_id, exc_info=True)
     finally:
-        _remove_connection(order_id, user.id, websocket)
+        _remove_connection(order_id, user.id, side, websocket)
         await pubsub.unsubscribe(f"chat:{order_id}")
         aclose = cast("Callable[[], Coroutine[None, None, None]]", pubsub.aclose)
         await aclose()
