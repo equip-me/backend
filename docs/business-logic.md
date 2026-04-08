@@ -785,7 +785,7 @@ Setting a new profile photo for a User or Organization replaces the existing one
 | Retry failed processing | Uploader only |
 | Attach to User profile | Uploader = the user themselves |
 | Attach to Organization profile | Uploader + Org Admin of that organization |
-| Attach to Listing | Uploader + Org Editor of the listing's organization |
+| Attach to Listing | Org Editor of the listing's organization |
 
 ### 7.7 Media API Summary
 
