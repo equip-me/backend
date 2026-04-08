@@ -103,3 +103,29 @@ class TestCreateStatusNotification:
             message_type=ChatMessageType.NOTIFICATION,
         ).count()
         assert count == 2
+
+
+from httpx import AsyncClient  # noqa: E402
+
+
+class TestNotificationsOnTransition:
+    """Verify that order transitions create notification messages."""
+
+    async def test_offer_creates_notifications(
+        self,
+        client: AsyncClient,
+        create_order_for_chat: tuple[str, str, str, str],
+    ) -> None:
+        """Offering an order creates two notification messages."""
+        order_id, _org_id, _org_token, _renter_token = create_order_for_chat
+        # create_order_for_chat already creates a PENDING order then offers it.
+        # The offer transition (pending→offered) should have created notifications.
+        notifications = await ChatMessage.filter(
+            order_id=order_id,
+            message_type=ChatMessageType.NOTIFICATION,
+        )
+        assert len(notifications) == 2
+        sides = {n.recipient_side for n in notifications}
+        assert sides == {ChatSide.REQUESTER, ChatSide.ORGANIZATION}
+        for n in notifications:
+            assert n.notification_body["new_status"] == "offered"
