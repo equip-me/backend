@@ -251,6 +251,60 @@ class TestListAllOrganizations:
         assert org_item["published_listing_count"] == 1
 
 
+class TestAdminUserOrdering:
+    async def test_admin_users_order_by_email(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_user: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        await create_user(email="alice@example.com", phone="+79990000001")
+        await create_user(email="bob@example.com", phone="+79990000002")
+        await create_user(email="charlie@example.com", phone="+79990000003")
+        resp = await client.get(
+            "/api/v1/private/users/",
+            params={"order_by": "email"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        emails = [item["email"] for item in items]
+        assert emails == sorted(emails)
+
+    async def test_admin_users_order_by_surname_desc(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_user: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        await create_user(email="a@example.com", phone="+79990000001", surname="Яковлев")
+        await create_user(email="b@example.com", phone="+79990000002", surname="Абрамов")
+        resp = await client.get(
+            "/api/v1/private/users/",
+            params={"order_by": "-surname"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        surnames = [item["surname"] for item in items]
+        assert surnames == sorted(surnames, reverse=True)
+
+    async def test_admin_users_invalid_order_by(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+    ) -> None:
+        _, admin_token = admin_user
+        resp = await client.get(
+            "/api/v1/private/users/",
+            params={"order_by": "invalid"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 422
+
+
 class TestAdminOrganizationOrdering:
     async def test_admin_orgs_order_by_short_name(
         self,

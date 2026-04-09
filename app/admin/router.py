@@ -2,6 +2,7 @@ from typing import Annotated
 
 from fastapi import APIRouter, Depends
 
+from app.admin.dependencies import UserOrdering
 from app.core.dependencies import require_platform_admin, require_platform_owner
 from app.core.enums import ListingStatus, MediaOwnerType, OrganizationStatus, UserRole
 from app.core.pagination import CursorParams, OrderingParams, PaginatedResponse
@@ -22,6 +23,7 @@ router = APIRouter(prefix="/api/v1/private", tags=["Admin"])
 async def list_users(
     _admin: Annotated[User, Depends(require_platform_admin)],
     storage: Annotated[StorageClient, Depends(get_storage)],
+    ordering: Annotated[OrderingParams, Depends(UserOrdering)],
     cursor: str | None = None,
     limit: int = 20,
     search: str | None = None,
@@ -29,7 +31,7 @@ async def list_users(
 ) -> PaginatedResponse[UserRead]:
     """List all platform users. Supports search by name/email and role filter. Platform Admin only."""
     params = CursorParams(cursor=cursor, limit=limit)
-    return await user_service.list_users(params, storage, search=search, role=role)
+    return await user_service.list_users(params, storage, ordering.ordering, search=search, role=role)
 
 
 @router.patch("/users/{user_id}/role", response_model=UserRead)
