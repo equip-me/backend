@@ -1126,7 +1126,7 @@ class TestListingOrdering:
             headers=headers,
         )
         assert create_resp.status_code == 201
-        listing_id = create_resp.json()["id"]
+        listing_id: str = create_resp.json()["id"]
         status_resp = await client.patch(
             f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
             json={"status": "published"},

@@ -118,6 +118,8 @@ class OrderingParams(Protocol):
 
     ordering: tuple[str, ...]
 
+    def __init__(self, order_by: str | None = None) -> None: ...
+
 
 def ordering_dependency(
     allowed_fields: dict[str, str],
