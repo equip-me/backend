@@ -125,6 +125,7 @@ def ordering_dependency(
 
     Returns:
         A class usable as a FastAPI dependency with an `ordering` property.
+
     """
     _allowed = allowed_fields
     _default = default
