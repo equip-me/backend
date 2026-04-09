@@ -16,7 +16,6 @@ tasks:
 
   # ── Infrastructure (internal start, public stop) ──────
   infra:up:
-    internal: true
     cmds:
       - docker compose -p rental-dev -f docker-compose.yml up -d
 
@@ -26,7 +25,6 @@ tasks:
       - docker compose -p rental-dev -f docker-compose.yml down
 
   test:infra:
-    internal: true
     cmds:
       - docker compose -p rental-test -f docker-compose.test.yml up -d
 
