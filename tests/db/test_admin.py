@@ -249,3 +249,39 @@ class TestListAllOrganizations:
         items = resp.json()["items"]
         org_item = next(item for item in items if item["id"] == org_id)
         assert org_item["published_listing_count"] == 1
+
+
+class TestAdminOrganizationOrdering:
+    async def test_admin_orgs_order_by_short_name(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+        create_organization: Any,
+        create_user: Any,
+    ) -> None:
+        _, admin_token = admin_user
+        await create_organization(token=None, inn="7707083893")
+        _, token2 = await create_user(email="orgcreator2@example.com")
+        await create_organization(token=token2, inn="7736207543")
+        resp = await client.get(
+            "/api/v1/private/organizations/",
+            params={"order_by": "short_name"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        names = [item["short_name"] for item in items]
+        assert names == sorted(names)
+
+    async def test_admin_orgs_invalid_order_by(
+        self,
+        client: AsyncClient,
+        admin_user: tuple[dict[str, Any], str],
+    ) -> None:
+        _, admin_token = admin_user
+        resp = await client.get(
+            "/api/v1/private/organizations/",
+            params={"order_by": "invalid"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 422

@@ -644,3 +644,45 @@ async def test_search_users_suspended_caller(client: AsyncClient, create_user: A
         headers={"Authorization": f"Bearer {token}"},
     )
     assert resp.status_code == 403
+
+
+class TestUserOrganizationOrdering:
+    async def test_my_orgs_order_by_created_at_asc(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+    ) -> None:
+        _, token = await create_organization()
+        await create_organization(token=token, inn="7736207543")
+        resp = await client.get(
+            "/api/v1/users/me/organizations",
+            params={"order_by": "created_at"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 200
+
+    async def test_my_orgs_invalid_order_by(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+    ) -> None:
+        _, token = await create_organization()
+        resp = await client.get(
+            "/api/v1/users/me/organizations",
+            params={"order_by": "invalid"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422
+
+    async def test_my_orgs_short_name_not_allowed(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+    ) -> None:
+        _, token = await create_organization()
+        resp = await client.get(
+            "/api/v1/users/me/organizations",
+            params={"order_by": "short_name"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422

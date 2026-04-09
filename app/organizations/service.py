@@ -139,13 +139,14 @@ async def get_organization(org_id: str) -> OrganizationRead:
 async def list_user_organizations(
     user: User,
     params: CursorParams,
+    ordering: tuple[str, ...] = ("-created_at", "-id"),
 ) -> tuple[list[Organization], str | None, bool]:
     qs = Membership.filter(
         user=user,
         status=MembershipStatus.MEMBER,
     ).prefetch_related("organization__contacts")
 
-    items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
+    items, next_cursor, has_more = await paginate(qs, params, ordering=ordering)
     orgs = [m.organization for m in items]
     return orgs, next_cursor, has_more
 
@@ -153,17 +154,19 @@ async def list_user_organizations(
 @traced
 async def list_public_organizations(
     params: CursorParams,
+    ordering: tuple[str, ...] = ("-created_at", "-id"),
     search: str | None = None,
 ) -> tuple[list[Organization], str | None, bool]:
     qs = Organization.filter(status=OrganizationStatus.VERIFIED)
     if search:
         qs = qs.filter(Q(short_name__icontains=search) | Q(full_name__icontains=search))
-    return await paginate(qs, params, ordering=("-created_at", "-id"))
+    return await paginate(qs, params, ordering=ordering)
 
 
 @traced
 async def list_all_organizations(
     params: CursorParams,
+    ordering: tuple[str, ...] = ("-created_at", "-id"),
     search: str | None = None,
     status: OrganizationStatus | None = None,
 ) -> tuple[list[Organization], str | None, bool]:
@@ -172,7 +175,7 @@ async def list_all_organizations(
         qs = qs.filter(Q(short_name__icontains=search) | Q(full_name__icontains=search))
     if status:
         qs = qs.filter(status=status)
-    return await paginate(qs, params, ordering=("-created_at", "-id"))
+    return await paginate(qs, params, ordering=ordering)
 
 
 @traced
@@ -344,9 +347,10 @@ async def remove_member(org_id: str, member_id: str, user: User) -> None:
 async def list_members(
     org_id: str,
     params: CursorParams,
+    ordering: tuple[str, ...] = ("-created_at", "-id"),
 ) -> PaginatedResponse[MembershipRead]:
     qs = Membership.filter(organization_id=org_id)
-    items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
+    items, next_cursor, has_more = await paginate(qs, params, ordering=ordering)
     member_reads = [MembershipRead.model_validate(m) for m in items]
     return PaginatedResponse(items=member_reads, next_cursor=next_cursor, has_more=has_more)
 
