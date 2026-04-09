@@ -116,7 +116,7 @@ async def change_privilege(user_id: str, data: PrivilegeUpdate) -> User:
 async def list_users(
     params: CursorParams,
     storage: StorageClient,
-    ordering: tuple[str, ...] = ("-created_at", "-id"),
+    ordering: tuple[str, ...],
     search: str | None = None,
     role: UserRole | None = None,
 ) -> PaginatedResponse[UserRead]:
