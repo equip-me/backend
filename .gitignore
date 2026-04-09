@@ -12,4 +12,5 @@ dist/
 htmlcov/
 .coverage
 .worktrees/
+.claude/worktrees/
 .DS_Store
