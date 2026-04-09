@@ -1,7 +1,7 @@
 import json
 from base64 import b64decode, b64encode
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
 from fastapi.exceptions import RequestValidationError
@@ -113,10 +113,16 @@ async def paginate(
     return items, next_cursor, has_more
 
 
+class OrderingParams(Protocol):
+    """Protocol for dependency classes produced by ordering_dependency."""
+
+    ordering: tuple[str, ...]
+
+
 def ordering_dependency(
     allowed_fields: dict[str, str],
     default: str,
-) -> type:
+) -> type[OrderingParams]:
     """Create a FastAPI dependency class for validating and parsing order_by query params.
 
     Args:

@@ -204,13 +204,14 @@ async def list_org_listings(
     storage: StorageClient,
     params: CursorParams,
     filters: ListingFilter,
+    ordering: tuple[str, ...],
 ) -> PaginatedResponse[ListingRead]:
     qs = Listing.filter(organization_id=org_id)
     qs = _apply_listing_filters(qs, filters)
     items, next_cursor, has_more = await paginate(
         qs.prefetch_related("category"),
         params,
-        ordering=("-updated_at", "-id"),
+        ordering=ordering,
     )
     listing_reads = [await _listing_to_read(listing, storage) for listing in items]
     return PaginatedResponse(items=listing_reads, next_cursor=next_cursor, has_more=has_more)
@@ -221,6 +222,7 @@ async def list_public_listings(
     storage: StorageClient,
     params: CursorParams,
     filters: ListingFilter,
+    ordering: tuple[str, ...],
 ) -> PaginatedResponse[ListingRead]:
     qs = Listing.filter(
         status=ListingStatus.PUBLISHED,
@@ -231,7 +233,7 @@ async def list_public_listings(
     items, next_cursor, has_more = await paginate(
         qs.prefetch_related("category"),
         params,
-        ordering=("-updated_at", "-id"),
+        ordering=ordering,
     )
 
     listing_reads = [await _listing_to_read(listing, storage) for listing in items]

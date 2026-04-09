@@ -5,6 +5,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.core.enums import MembershipStatus, OrganizationStatus
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.pagination import ordering_dependency
 from app.core.security import decode_access_token
 from app.listings.models import Listing
 from app.organizations.dependencies import require_org_editor, require_org_member
@@ -96,3 +97,9 @@ class ListingFilter:
         self.delivery = delivery
         self.installation = installation
         self.setup = setup
+
+
+ListingOrdering = ordering_dependency(
+    allowed_fields={"price": "price", "name": "name", "created_at": "created_at", "updated_at": "updated_at"},
+    default="-updated_at",
+)

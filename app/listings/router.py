@@ -3,9 +3,15 @@ from typing import Annotated
 from fastapi import APIRouter, Depends
 from fastapi.responses import Response
 
-from app.core.pagination import CursorParams, PaginatedResponse
+from app.core.pagination import CursorParams, OrderingParams, PaginatedResponse
 from app.listings import service
-from app.listings.dependencies import ListingFilter, resolve_listing, resolve_org_listing, resolve_public_listing
+from app.listings.dependencies import (
+    ListingFilter,
+    ListingOrdering,
+    resolve_listing,
+    resolve_org_listing,
+    resolve_public_listing,
+)
 from app.listings.models import Listing
 from app.listings.schemas import (
     ListingCreate,
@@ -75,13 +81,14 @@ async def list_org_listings(
     org_id: str,
     _membership: Annotated[Membership, Depends(require_org_member)],
     filters: Annotated[ListingFilter, Depends()],
+    ordering: Annotated[OrderingParams, Depends(ListingOrdering)],
     storage: Annotated[StorageClient, Depends(get_storage)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[ListingRead]:
     """List all listings for the organization regardless of status. Org members only."""
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_org_listings(org_id, storage, params, filters)
+    return await service.list_org_listings(org_id, storage, params, filters, ordering.ordering)
 
 
 @router.get("/organizations/{org_id}/listings/{listing_id}", response_model=ListingRead)
@@ -96,13 +103,14 @@ async def get_org_listing(
 @router.get("/listings/", response_model=PaginatedResponse[ListingRead])
 async def list_public_listings(
     filters: Annotated[ListingFilter, Depends()],
+    ordering: Annotated[OrderingParams, Depends(ListingOrdering)],
     storage: Annotated[StorageClient, Depends(get_storage)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[ListingRead]:
     """Browse published listings from verified organizations only."""
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_public_listings(storage, params, filters)
+    return await service.list_public_listings(storage, params, filters, ordering.ordering)
 
 
 @router.get("/listings/{listing_id}", response_model=ListingRead)
