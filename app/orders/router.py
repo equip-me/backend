@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, status
 
 from app.core.dependencies import require_active_user
-from app.core.pagination import CursorParams, PaginatedResponse
+from app.core.pagination import CursorParams, OrderingParams, PaginatedResponse
 from app.orders import service
-from app.orders.dependencies import OrderFilter, get_org_order_or_404, require_order_requester
+from app.orders.dependencies import OrderFilter, OrderOrdering, get_org_order_or_404, require_order_requester
 from app.orders.models import Order
 from app.orders.schemas import OrderCreate, OrderOffer, OrderRead
 from app.organizations.dependencies import require_org_editor
@@ -30,11 +30,12 @@ async def create_order(
 async def list_my_orders(
     user: Annotated[User, Depends(require_active_user)],
     filters: Annotated[OrderFilter, Depends()],
+    ordering: Annotated[OrderingParams, Depends(OrderOrdering)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[OrderRead]:
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_user_orders(user, params, filters)
+    return await service.list_user_orders(user, params, filters, ordering.ordering)
 
 
 @router.get("/orders/{order_id}", response_model=OrderRead)
@@ -66,11 +67,12 @@ async def list_org_orders(
     org_id: str,
     _membership: Annotated[Membership, Depends(require_org_editor)],
     filters: Annotated[OrderFilter, Depends()],
+    ordering: Annotated[OrderingParams, Depends(OrderOrdering)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[OrderRead]:
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_org_orders(org_id, params, filters)
+    return await service.list_org_orders(org_id, params, filters, ordering.ordering)
 
 
 @router.get("/organizations/{org_id}/orders/{order_id}", response_model=OrderRead)
