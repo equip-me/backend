@@ -1151,4 +1151,105 @@ class TestListOrdersFilters:
         assert resp.status_code == 200
         items = resp.json()["items"]
         assert len(items) == 1
+
+
+@pytest.mark.anyio
+class TestOrderOrdering:
+    async def test_user_orders_default_order(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order1 = await _create_order(client, listing_id, renter_token)
+        order2 = await _create_order(client, listing_id, renter_token, start_offset=5)
+
+        resp = await client.get(
+            "/api/v1/orders/",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 2
+        # Default ordering is -updated_at: most recently updated first
+        assert items[0]["id"] == order2["id"]
+        assert items[1]["id"] == order1["id"]
+
+    async def test_user_orders_order_by_created_at_asc(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order1 = await _create_order(client, listing_id, renter_token)
+        order2 = await _create_order(client, listing_id, renter_token, start_offset=5)
+
+        resp = await client.get(
+            "/api/v1/orders/?order_by=created_at",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 2
+        # Ascending: earliest created first
+        assert items[0]["id"] == order1["id"]
+        assert items[1]["id"] == order2["id"]
+
+    async def test_user_orders_order_by_requested_start_date(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, _org_id, _org_token = create_listing
+        order1 = await _create_order(client, listing_id, renter_token, start_offset=1)
+        order2 = await _create_order(client, listing_id, renter_token, start_offset=10)
+
+        resp = await client.get(
+            "/api/v1/orders/?order_by=requested_start_date",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 2
+        # Ascending: earlier start date first
+        assert items[0]["id"] == order1["id"]
+        assert items[1]["id"] == order2["id"]
+
+    async def test_user_orders_invalid_order_by(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        _listing_id, _org_id, _org_token = create_listing
+
+        resp = await client.get(
+            "/api/v1/orders/?order_by=invalid",
+            headers={"Authorization": f"Bearer {renter_token}"},
+        )
+        assert resp.status_code == 422
+
+    async def test_org_orders_order_by_created_at(
+        self,
+        client: AsyncClient,
+        create_listing: tuple[str, str, str],
+        renter_token: str,
+    ) -> None:
+        listing_id, org_id, org_token = create_listing
+        order1 = await _create_order(client, listing_id, renter_token)
+        order2 = await _create_order(client, listing_id, renter_token, start_offset=5)
+
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/orders/?order_by=created_at",
+            headers={"Authorization": f"Bearer {org_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) == 2
+        # Ascending: earliest created first
+        assert items[0]["id"] == order1["id"]
+        assert items[1]["id"] == order2["id"]
         assert items[0]["listing_id"] == listing_id

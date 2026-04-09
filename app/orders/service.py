@@ -192,10 +192,11 @@ async def list_user_orders(
     user: User,
     params: CursorParams,
     filters: OrderFilter,
+    ordering: tuple[str, ...],
 ) -> PaginatedResponse[OrderRead]:
     qs = Order.filter(requester=user)
     qs = _apply_order_filters(qs, filters)
-    items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
+    items, next_cursor, has_more = await paginate(qs, params, ordering=ordering)
     order_reads = [OrderRead.model_validate(order) for order in items]
     return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)
 
@@ -205,9 +206,10 @@ async def list_org_orders(
     org_id: str,
     params: CursorParams,
     filters: OrderFilter,
+    ordering: tuple[str, ...],
 ) -> PaginatedResponse[OrderRead]:
     qs = Order.filter(organization_id=org_id)
     qs = _apply_order_filters(qs, filters)
-    items, next_cursor, has_more = await paginate(qs, params, ordering=("-updated_at", "-id"))
+    items, next_cursor, has_more = await paginate(qs, params, ordering=ordering)
     order_reads = [OrderRead.model_validate(order) for order in items]
     return PaginatedResponse(items=order_reads, next_cursor=next_cursor, has_more=has_more)

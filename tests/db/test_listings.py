@@ -1107,3 +1107,187 @@ class TestGetOrgListing:
             headers={"Authorization": f"Bearer {token}"},
         )
         assert resp.status_code == 404
+
+
+class TestListingOrdering:
+    async def _create_and_publish(
+        self,
+        client: AsyncClient,
+        org_id: str,
+        token: str,
+        category_id: str,
+        name: str,
+        price: float,
+    ) -> str:
+        headers = {"Authorization": f"Bearer {token}"}
+        create_resp = await client.post(
+            f"/api/v1/organizations/{org_id}/listings/",
+            json={"name": name, "category_id": category_id, "price": price},
+            headers=headers,
+        )
+        assert create_resp.status_code == 201
+        listing_id: str = create_resp.json()["id"]
+        status_resp = await client.patch(
+            f"/api/v1/organizations/{org_id}/listings/{listing_id}/status",
+            json={"status": "published"},
+            headers=headers,
+        )
+        assert status_resp.status_code == 200
+        return listing_id
+
+    async def test_public_listings_default_order(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+
+        id_a = await self._create_and_publish(client, org_id, token, category_id, "Alpha", 100.0)
+        id_b = await self._create_and_publish(client, org_id, token, category_id, "Beta", 200.0)
+        id_c = await self._create_and_publish(client, org_id, token, category_id, "Gamma", 300.0)
+
+        resp = await client.get("/api/v1/listings/")
+        assert resp.status_code == 200
+        ids = [item["id"] for item in resp.json()["items"]]
+        # Default order is -updated_at, so most recently updated comes first
+        assert ids == [id_c, id_b, id_a]
+
+    async def test_public_listings_order_by_price_asc(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+
+        id_a = await self._create_and_publish(client, org_id, token, category_id, "Cheap", 10.0)
+        id_b = await self._create_and_publish(client, org_id, token, category_id, "Mid", 50.0)
+        id_c = await self._create_and_publish(client, org_id, token, category_id, "Expensive", 99.0)
+
+        resp = await client.get("/api/v1/listings/", params={"order_by": "price"})
+        assert resp.status_code == 200
+        prices = [item["price"] for item in resp.json()["items"]]
+        assert prices == sorted(prices)
+        ids = [item["id"] for item in resp.json()["items"]]
+        assert ids == [id_a, id_b, id_c]
+
+    async def test_public_listings_order_by_price_desc(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+
+        id_a = await self._create_and_publish(client, org_id, token, category_id, "Cheap", 10.0)
+        id_b = await self._create_and_publish(client, org_id, token, category_id, "Mid", 50.0)
+        id_c = await self._create_and_publish(client, org_id, token, category_id, "Expensive", 99.0)
+
+        resp = await client.get("/api/v1/listings/", params={"order_by": "-price"})
+        assert resp.status_code == 200
+        prices = [item["price"] for item in resp.json()["items"]]
+        assert prices == sorted(prices, reverse=True)
+        ids = [item["id"] for item in resp.json()["items"]]
+        assert ids == [id_c, id_b, id_a]
+
+    async def test_public_listings_order_by_name(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+
+        await self._create_and_publish(client, org_id, token, category_id, "Zebra", 100.0)
+        await self._create_and_publish(client, org_id, token, category_id, "Apple", 200.0)
+        await self._create_and_publish(client, org_id, token, category_id, "Mango", 300.0)
+
+        resp = await client.get("/api/v1/listings/", params={"order_by": "name"})
+        assert resp.status_code == 200
+        names = [item["name"] for item in resp.json()["items"]]
+        assert names == sorted(names)
+
+    async def test_public_listings_invalid_order_by(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        resp = await client.get("/api/v1/listings/", params={"order_by": "nonexistent"})
+        assert resp.status_code == 422
+
+    async def test_org_listings_order_by_price(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+        headers = {"Authorization": f"Bearer {token}"}
+
+        id_a = await self._create_and_publish(client, org_id, token, category_id, "Cheap", 10.0)
+        id_b = await self._create_and_publish(client, org_id, token, category_id, "Mid", 50.0)
+        id_c = await self._create_and_publish(client, org_id, token, category_id, "Expensive", 99.0)
+
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/listings/",
+            params={"order_by": "price"},
+            headers=headers,
+        )
+        assert resp.status_code == 200
+        ids = [item["id"] for item in resp.json()["items"]]
+        assert ids == [id_a, id_b, id_c]
+
+    async def test_public_listings_pagination_with_custom_order(
+        self,
+        client: AsyncClient,
+        verified_org: tuple[dict[str, Any], str],
+        seed_categories: list[ListingCategory],
+    ) -> None:
+        org_data, token = verified_org
+        org_id = org_data["id"]
+        category_id = seed_categories[0].id
+
+        prices = [10.0, 30.0, 50.0, 70.0, 90.0]
+        for i, price in enumerate(prices):
+            await self._create_and_publish(client, org_id, token, category_id, f"Item {i}", price)
+
+        all_ids: list[str] = []
+        cursor: str | None = None
+
+        for _ in range(3):
+            params: dict[str, Any] = {"order_by": "price", "limit": 2}
+            if cursor is not None:
+                params["cursor"] = cursor
+            resp = await client.get("/api/v1/listings/", params=params)
+            assert resp.status_code == 200
+            body = resp.json()
+            page_ids = [item["id"] for item in body["items"]]
+            assert len(page_ids) > 0
+            all_ids.extend(page_ids)
+            cursor = body.get("next_cursor")
+            if not body["has_more"]:
+                break
+
+        # No duplicates, no gaps: all 5 items collected
+        assert len(all_ids) == 5
+        assert len(set(all_ids)) == 5
+
+        # Prices should be in ascending order across all pages
+        all_prices: list[float] = []
+        for listing_id in all_ids:
+            resp = await client.get(f"/api/v1/listings/{listing_id}")
+            assert resp.status_code == 200
+            all_prices.append(resp.json()["price"])
+        assert all_prices == sorted(all_prices)

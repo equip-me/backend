@@ -6,6 +6,7 @@ from fastapi import Depends, Path, Query
 from app.core.dependencies import require_active_user
 from app.core.enums import OrderStatus
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.pagination import ordering_dependency
 from app.orders.models import Order
 from app.users.models import User
 
@@ -48,3 +49,14 @@ class OrderFilter:
         self.date_from = date_from
         self.date_to = date_to
         self.search = search
+
+
+OrderOrdering = ordering_dependency(
+    allowed_fields={
+        "created_at": "created_at",
+        "updated_at": "updated_at",
+        "estimated_cost": "estimated_cost",
+        "requested_start_date": "requested_start_date",
+    },
+    default="-updated_at",
+)

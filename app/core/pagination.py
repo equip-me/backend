@@ -1,9 +1,10 @@
 import json
 from base64 import b64decode, b64encode
 from datetime import datetime
-from typing import Any
+from typing import Any, Protocol
 from uuid import UUID
 
+from fastapi.exceptions import RequestValidationError
 from pydantic import BaseModel, Field
 from tortoise.expressions import Q
 from tortoise.queryset import QuerySet
@@ -110,3 +111,54 @@ async def paginate(
         next_cursor = encode_cursor(cursor_values)
 
     return items, next_cursor, has_more
+
+
+class OrderingParams(Protocol):
+    """Protocol for dependency classes produced by ordering_dependency."""
+
+    ordering: tuple[str, ...]
+
+    def __init__(self, order_by: str | None = None) -> None: ...
+
+
+def ordering_dependency(
+    allowed_fields: dict[str, str],
+    default: str,
+) -> type[OrderingParams]:
+    """Create a FastAPI dependency class for validating and parsing order_by query params.
+
+    Args:
+        allowed_fields: Mapping of client-facing field names to ORM field names.
+        default: Default ordering field (prefix with '-' for descending).
+
+    Returns:
+        A class usable as a FastAPI dependency with an `ordering` property.
+
+    """
+    _allowed = allowed_fields
+    _default = default
+
+    class _OrderingParams:
+        def __init__(self, order_by: str | None = None) -> None:
+            raw = order_by if order_by is not None else _default
+            descending = raw.startswith("-")
+            field_name = raw[1:] if descending else raw
+
+            if field_name not in _allowed:
+                allowed_list = ", ".join(sorted(_allowed))
+                raise RequestValidationError(
+                    [
+                        {
+                            "loc": ("query", "order_by"),
+                            "msg": f"Invalid order_by field '{field_name}'. Allowed: {allowed_list}",
+                            "type": "value_error",
+                        },
+                    ],
+                )
+
+            model_field = _allowed[field_name]
+            prefix = "-" if descending else ""
+            tiebreaker = "-id" if descending else "id"
+            self.ordering: tuple[str, ...] = (f"{prefix}{model_field}", tiebreaker)
+
+    return _OrderingParams

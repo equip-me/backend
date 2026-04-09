@@ -903,3 +903,100 @@ class TestVerifyOrganization:
             headers={"Authorization": f"Bearer {admin_token}"},
         )
         assert resp.status_code == 404
+
+
+class TestOrganizationOrdering:
+    async def test_public_orgs_default_order(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        create_user: Any,
+    ) -> None:
+        await create_organization(token=None, inn="7707083893")
+        _, token2 = await create_user(email="orgcreator2@example.com")
+        await create_organization(token=token2, inn="7736207543")
+        from app.core.enums import OrganizationStatus
+        from app.organizations.models import Organization
+
+        await Organization.all().update(status=OrganizationStatus.VERIFIED)
+        resp = await client.get("/api/v1/organizations/")
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        assert len(items) >= 2
+        dates = [item["id"] for item in items]
+        assert dates == list(dict.fromkeys(dates))
+
+    async def test_public_orgs_order_by_short_name(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        create_user: Any,
+    ) -> None:
+        await create_organization(token=None, inn="7707083893")
+        _, token2 = await create_user(email="orgcreator2@example.com")
+        await create_organization(token=token2, inn="7736207543")
+        from app.core.enums import OrganizationStatus
+        from app.organizations.models import Organization
+
+        await Organization.all().update(status=OrganizationStatus.VERIFIED)
+        resp = await client.get("/api/v1/organizations/", params={"order_by": "short_name"})
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        names = [item["short_name"] for item in items]
+        assert names == sorted(names)
+
+    async def test_public_orgs_invalid_order_by(self, client: AsyncClient) -> None:
+        resp = await client.get("/api/v1/organizations/", params={"order_by": "invalid"})
+        assert resp.status_code == 422
+
+
+class TestMemberOrdering:
+    async def test_members_order_by_created_at_asc(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+        create_user: Any,
+    ) -> None:
+        org_data, admin_token = await create_organization()
+        org_id = org_data["id"]
+        _, token2 = await create_user(email="member2@example.com", phone="+79990000002")
+        user2_resp = await client.get("/api/v1/users/me", headers={"Authorization": f"Bearer {token2}"})
+        user2_email = user2_resp.json()["email"]
+        await client.post(
+            f"/api/v1/organizations/{org_id}/members/invite",
+            json={"email": user2_email, "role": "viewer"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        invites = await client.get(
+            f"/api/v1/organizations/{org_id}/members",
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        pending = [m for m in invites.json()["items"] if m["status"] == "pending"]
+        if pending:
+            await client.patch(
+                f"/api/v1/organizations/{org_id}/members/{pending[0]['id']}/approve",
+                headers={"Authorization": f"Bearer {admin_token}"},
+            )
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/members",
+            params={"order_by": "created_at"},
+            headers={"Authorization": f"Bearer {admin_token}"},
+        )
+        assert resp.status_code == 200
+        items = resp.json()["items"]
+        dates = [item["created_at"] for item in items]
+        assert dates == sorted(dates)
+
+    async def test_members_invalid_order_by(
+        self,
+        client: AsyncClient,
+        create_organization: Any,
+    ) -> None:
+        org_data, token = await create_organization()
+        org_id = org_data["id"]
+        resp = await client.get(
+            f"/api/v1/organizations/{org_id}/members",
+            params={"order_by": "invalid"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        assert resp.status_code == 422

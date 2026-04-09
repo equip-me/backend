@@ -7,6 +7,7 @@ from app.core.config import get_settings
 from app.core.dependencies import require_active_user
 from app.core.enums import MembershipRole, MembershipStatus
 from app.core.exceptions import NotFoundError, PermissionDeniedError
+from app.core.pagination import ordering_dependency
 from app.organizations.models import Membership, Organization
 from app.users.models import User
 
@@ -65,3 +66,17 @@ async def require_org_admin(
     if membership is None:
         raise PermissionDeniedError("Organization admin access required", code="org.admin_required")
     return membership
+
+
+OrganizationOrdering = ordering_dependency(
+    allowed_fields={"short_name": "short_name", "created_at": "created_at"},
+    default="-created_at",
+)
+MemberOrdering = ordering_dependency(
+    allowed_fields={"role": "role", "created_at": "created_at"},
+    default="-created_at",
+)
+UserOrgOrdering = ordering_dependency(
+    allowed_fields={"created_at": "created_at"},
+    default="-created_at",
+)

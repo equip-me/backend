@@ -5,12 +5,17 @@ from fastapi import APIRouter, Depends
 
 from app.core.dependencies import require_active_user
 from app.core.enums import ListingStatus, MediaOwnerType
-from app.core.pagination import CursorParams, PaginatedResponse
+from app.core.pagination import CursorParams, OrderingParams, PaginatedResponse
 from app.listings.models import Listing
 from app.media import service as media_service
 from app.media.storage import StorageClient, get_storage
 from app.organizations import service
-from app.organizations.dependencies import get_dadata_client, require_org_admin, require_org_member
+from app.organizations.dependencies import (
+    OrganizationOrdering,
+    get_dadata_client,
+    require_org_admin,
+    require_org_member,
+)
 from app.organizations.models import Membership, Organization
 from app.organizations.schemas import (
     ContactRead,
@@ -42,13 +47,14 @@ async def create_organization(
 @router.get("/", response_model=PaginatedResponse[OrganizationListRead])
 async def list_organizations(
     storage: Annotated[StorageClient, Depends(get_storage)],
+    ordering: Annotated[OrderingParams, Depends(OrganizationOrdering)],
     cursor: str | None = None,
     limit: int = 20,
     search: str | None = None,
 ) -> PaginatedResponse[OrganizationListRead]:
     """Browse verified organizations with published listing count."""
     params = CursorParams(cursor=cursor, limit=limit)
-    items, next_cursor, has_more = await service.list_public_organizations(params, search=search)
+    items, next_cursor, has_more = await service.list_public_organizations(params, ordering.ordering, search=search)
 
     org_reads: list[OrganizationListRead] = []
     for org in items:

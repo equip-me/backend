@@ -116,6 +116,7 @@ async def change_privilege(user_id: str, data: PrivilegeUpdate) -> User:
 async def list_users(
     params: CursorParams,
     storage: StorageClient,
+    ordering: tuple[str, ...],
     search: str | None = None,
     role: UserRole | None = None,
 ) -> PaginatedResponse[UserRead]:
@@ -127,7 +128,7 @@ async def list_users(
     if role:
         qs = qs.filter(role=role)
 
-    items, next_cursor, has_more = await paginate(qs, params, ordering=("-created_at", "-id"))
+    items, next_cursor, has_more = await paginate(qs, params, ordering=ordering)
 
     user_reads: list[UserRead] = []
     for user in items:

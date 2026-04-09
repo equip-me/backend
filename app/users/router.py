@@ -4,10 +4,11 @@ from fastapi import APIRouter, Depends, Query
 
 from app.core.dependencies import require_active_user
 from app.core.enums import MediaOwnerType
-from app.core.pagination import CursorParams, PaginatedResponse
+from app.core.pagination import CursorParams, OrderingParams, PaginatedResponse
 from app.media import service as media_service
 from app.media.storage import StorageClient, get_storage
 from app.organizations import service as org_service
+from app.organizations.dependencies import UserOrgOrdering
 from app.organizations.schemas import OrganizationRead
 from app.users import service
 from app.users.models import User
@@ -70,11 +71,12 @@ async def search_users(
 async def list_my_organizations(
     user: Annotated[User, Depends(require_active_user)],
     storage: Annotated[StorageClient, Depends(get_storage)],
+    ordering: Annotated[OrderingParams, Depends(UserOrgOrdering)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[OrganizationRead]:
     params = CursorParams(cursor=cursor, limit=limit)
-    orgs, next_cursor, has_more = await org_service.list_user_organizations(user, params)
+    orgs, next_cursor, has_more = await org_service.list_user_organizations(user, params, ordering.ordering)
     org_reads: list[OrganizationRead] = []
     for org in orgs:
         org_read = OrganizationRead.model_validate(org)

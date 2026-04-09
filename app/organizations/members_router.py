@@ -3,9 +3,9 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Response
 
 from app.core.dependencies import require_active_user
-from app.core.pagination import CursorParams, PaginatedResponse
+from app.core.pagination import CursorParams, OrderingParams, PaginatedResponse
 from app.organizations import service
-from app.organizations.dependencies import get_org_or_404, require_org_admin, require_org_member
+from app.organizations.dependencies import MemberOrdering, get_org_or_404, require_org_admin, require_org_member
 from app.organizations.models import Membership, Organization
 from app.organizations.schemas import (
     MembershipApprove,
@@ -78,8 +78,9 @@ async def remove_member(
 async def list_members(
     org_id: str,
     _membership: Annotated[Membership, Depends(require_org_member)],
+    ordering: Annotated[OrderingParams, Depends(MemberOrdering)],
     cursor: str | None = None,
     limit: int = 20,
 ) -> PaginatedResponse[MembershipRead]:
     params = CursorParams(cursor=cursor, limit=limit)
-    return await service.list_members(org_id, params)
+    return await service.list_members(org_id, params, ordering.ordering)
