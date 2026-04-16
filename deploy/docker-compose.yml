@@ -162,6 +162,7 @@ services:
       CLICKHOUSE_PASSWORD: clickhouse
     volumes:
       - clickhouse_data:/var/lib/clickhouse
+      - ./config/clickhouse/logging.xml:/etc/clickhouse-server/config.d/logging.xml:ro
     healthcheck:
       test: ["CMD-SHELL", "clickhouse-client --password clickhouse --query 'SELECT 1'"]
       interval: 5s
