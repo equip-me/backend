@@ -18,7 +18,7 @@ exporters:
     password: clickhouse
     database: otel
     create_schema: true
-    ttl_days: 30
+    ttl: 720h
     logs_table_name: otel_logs
     traces_table_name: otel_traces
     metrics_table_name: otel_metrics
