@@ -3,24 +3,25 @@
         <level>warning</level>
     </logger>
 
+    <!-- Disable high-frequency internal observability tables.
+         App observability is handled by the otel pipeline (otel.* tables).
+         These system tables only consume CPU via constant inserts and merges:
+           - trace_log: CPU stack-sampler, ~500 samples/sec, drives a merge feedback loop
+           - metric_log / asynchronous_metric_log / latency_log: write every 1-7s
+           - error_log: low signal, redundant with text_log -->
+    <trace_log remove="1"/>
+    <metric_log remove="1"/>
+    <asynchronous_metric_log remove="1"/>
+    <latency_log remove="1"/>
+    <error_log remove="1"/>
+
+    <!-- Keep query_log and text_log for debugging, capped at 3 days. -->
     <query_log>
         <partition_by>toYYYYMM(event_date)</partition_by>
         <ttl>event_date + INTERVAL 3 DAY</ttl>
     </query_log>
-    <trace_log>
-        <partition_by>toYYYYMM(event_date)</partition_by>
-        <ttl>event_date + INTERVAL 3 DAY</ttl>
-    </trace_log>
     <text_log>
         <partition_by>toYYYYMM(event_date)</partition_by>
         <ttl>event_date + INTERVAL 3 DAY</ttl>
     </text_log>
-    <metric_log>
-        <partition_by>toYYYYMM(event_date)</partition_by>
-        <ttl>event_date + INTERVAL 3 DAY</ttl>
-    </metric_log>
-    <asynchronous_metric_log>
-        <partition_by>toYYYYMM(event_date)</partition_by>
-        <ttl>event_date + INTERVAL 3 DAY</ttl>
-    </asynchronous_metric_log>
 </clickhouse>
